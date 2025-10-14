@@ -28,26 +28,24 @@ class AuthController extends Controller
 
     public function register(Request $request)
     {
+        // Verificar que hay un usuario autenticado
+        if (!$request->user()) {
+            return response()->json([
+                'error' => 'Registro público no permitido. Contacta a un administrador.'
+            ], 403);
+        }
+
         $data = RegisterUserData::from($request->all());
 
-        // Si no hay usuario autenticado (registro público), solo permitir type 'client'
-        if (!$request->user()) {
-            if ($data->type !== 'client') {
-                return response()->json([
-                    'error' => 'Solo puedes registrarte como cliente. Contacta a un administrador para otros tipos de cuenta.'
-                ], 403);
-            }
-        } else {
-            // Si hay usuario autenticado, verificar permisos
-            if (!$request->user()->can('createUserType', $data->type)) {
-                return response()->json([
-                    'error' => 'No tienes permisos para crear usuarios de este tipo'
-                ], 403);
-            }
+        // Verificar permisos del usuario autenticado
+        if (!$request->user()->can('createUserType', $data->type)) {
+            return response()->json([
+                'error' => 'No tienes permisos para crear usuarios de este tipo'
+            ], 403);
         }
 
         try {
-            $result = $this->authService->register($data);
+            $result = $this->authService->register($data, $request->user()->id);
             return response()->json($result, 201);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 400);
@@ -56,24 +54,37 @@ class AuthController extends Controller
 
     public function googleRedirect()
     {
-        return response()->json([
-            'url' => $this->authService->getGoogleRedirectUrl()
-        ]);
+        return $this->authService->redirectToGoogle();
     }
 
-    public function googleCallback(Request $request)
+    public function googleCallback()
     {
-        $code = $request->query('code');
-
-        if (!$code) {
-            return response()->json(['error' => 'Código de autorización faltante'], 400);
-        }
-
         try {
-            $result = $this->authService->handleGoogleCallback($code);
-            return response()->json($result);
+            $result = $this->authService->handleGoogleCallback();
+
+            // Redirigir al frontend con el token en la URL
+            $frontendUrl = env('FRONTEND_URL', 'http://localhost:4200') . '/dashboard';
+
+            $queryParams = http_build_query([
+                'token' => $result['token'],
+                'user_type' => $result['user']['type'],
+                'user_id' => $result['user']['id']
+            ]);
+
+            return redirect($frontendUrl . '?' . $queryParams);
+
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 400);
+            $errorMessage = $e->getMessage();
+
+            // Redirigir a página de error según el tipo de error
+            $frontendUrl = env('FRONTEND_URL', 'http://localhost:4200') . '/access-denied';
+
+            $queryParams = http_build_query([
+                'error' => 'access_denied',
+                'message' => $errorMessage
+            ]);
+
+            return redirect($frontendUrl . '?' . $queryParams);
         }
     }
 }

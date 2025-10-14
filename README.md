@@ -30,9 +30,9 @@ app/
 ## 📋 Características Implementadas
 
 ### 🔐 Sistema de Autenticación Completo
-- ✅ **Registro público** - Solo permite crear usuarios tipo `client`
-- ✅ **Login tradicional** - Email y contraseña
-- ✅ **Google OAuth** - Autenticación social
+- ✅ **Registro jerárquico** - Solo admin/agent pueden registrar usuarios
+- ✅ **Login universal** - Todos los usuarios registrados pueden loguearse
+- ✅ **Google OAuth universal** - Disponible para todos los usuarios registrados
 - ✅ **Tres tipos de usuario** - Admin, Agent, Client
 - ✅ **Tokens JWT** - Autenticación stateless con Sanctum
 
@@ -102,22 +102,30 @@ app/
    php artisan migrate:fresh --seed
    ```
 
-7. **Iniciar servidor de desarrollo**
-   ```bash
-   php artisan serve --host=127.0.0.1 --port=8000
-   ```
+5. **Configurar Google OAuth** (opcional)
+   - Ve a [Google Cloud Console](https://console.cloud.google.com/)
+   - Crea un proyecto o selecciona uno existente
+   - Habilita la Google+ API
+   - Crea credenciales OAuth 2.0
+   - Configura la URL autorizada: `http://localhost:8000/api/v1/auth/google/callback`
+   - Actualiza las variables en `.env`:
+     ```env
+     GOOGLE_CLIENT_ID=tu_client_id_aqui
+     GOOGLE_CLIENT_SECRET=tu_client_secret_aqui
+     FRONTEND_URL=http://localhost:4200
+     ```
 
 ## � Usuarios de Prueba
 
 Después de ejecutar los seeders, tendrás estos usuarios disponibles:
 
-| Tipo | Email | Password | Permisos |
-|------|-------|----------|----------|
-| **Admin** | `admin@example.com` | `password123` | Crear/ver/editar/eliminar cualquier usuario |
-| **Agent** | `agent@example.com` | `password123` | Crear/ver usuarios tipo `client` |
-| **Client** | `client@example.com` | `password123` | Solo gestionar sus propios datos |
-| **Client** | `john@example.com` | `password123` | Solo gestionar sus propios datos |
-| **Client** | `jane@example.com` | `password123` | Solo gestionar sus propios datos |
+| Tipo | Email | Password | Login Email | Google OAuth | Registro |
+|------|-------|----------|------------|-------------|----------|
+| **Admin** | `admin@example.com` | `password123` | ✅ Disponible | ✅ Disponible | Registrado por sistema |
+| **Agent** | `agent@example.com` | `password123` | ✅ Disponible | ✅ Disponible | Registrado por sistema |
+| **Client** | `client@example.com` | `password123` | ✅ Disponible | ✅ Disponible | Registrado por admin/agent |
+| **Client** | `john@example.com` | `password123` | ✅ Disponible | ✅ Disponible | Registrado por admin/agent |
+| **Client** | `jane@example.com` | `password123` | ✅ Disponible | ✅ Disponible | Registrado por admin/agent |
 
 ## 📚 Documentación de API
 
@@ -165,8 +173,24 @@ Content-Type: application/json
 #### Google OAuth
 ```http
 GET /api/v1/auth/google
+```
+**Disponible para:** Todos los usuarios registrados en el sistema.
+
+Redirige automáticamente al usuario a Google para autenticación.
+
+**Callback (manejo automático):**
+```http
 GET /api/v1/auth/google/callback
 ```
+Procesa la respuesta de Google y valida permisos.
+
+**Redirecciones:**
+- **Éxito:** `http://localhost:4200/dashboard?token={token}&user_type={type}&user_id={id}`
+- **Error:** `http://localhost:4200/access-denied?error=access_denied&message={mensaje}`
+
+**Mensajes de error posibles:**
+- `"Usuario no registrado en el sistema"`
+- `"No tiene permisos para acceder al sistema"`
 
 ### 👥 Gestión de Usuarios
 
@@ -253,10 +277,50 @@ PUT /api/v1/clients/{id}
 DELETE /api/v1/clients/{id}
 ```
 
+## 🔐 Flujo de Registro y Autenticación
+
+### 📝 Proceso de Registro
+
+1. **NO hay registro público** - Solo usuarios autenticados pueden registrar
+2. **Admin** puede registrar usuarios de cualquier tipo (`admin`, `agent`, `client`) usando `/api/v1/users`
+3. **Agent** puede registrar solo usuarios tipo `client` usando `/api/v1/users`
+4. **Client** NO puede registrar a nadie
+
+### 🔑 Proceso de Login
+
+Una vez registrado, cualquier usuario puede loguearse usando:
+
+#### **Opción 1: Email + Contraseña** (Todos los tipos)
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "usuario@example.com",
+  "password": "password123"
+}
+```
+
+#### **Opción 2: Google OAuth** (Todos los tipos registrados)
+```http
+GET /api/v1/auth/google
+```
+**Nota:** Requiere que el usuario esté registrado previamente en el sistema.
+
+### 🚫 Reglas de Acceso
+
+- **Registro público:** ❌ NO permitido
+- **Login universal:** Todos los usuarios registrados pueden loguearse con email o Google
+- **Jerarquía de registro:** Admin > Agent > Client (cada nivel puede registrar el inferior)
+- **Interfaz diferenciada:** El frontend muestra diferentes vistas según el tipo de usuario
+
 ## 🔐 Matriz de Permisos
 
 | Acción | Endpoint | Admin | Agent | Client |
 |--------|----------|-------|-------|--------|
+| **Login con email** | `POST /auth/login` | ✅ | ✅ | ✅ |
+| **Registro público** | `POST /auth/register` | ❌ | ❌ | ❌ |
+| **Login con Google** | `GET /auth/google` | ✅ | ✅ | ✅ |
 | **Ver usuarios** | `GET /users` | ✅ Todos | ❌ Solo clients | ❌ |
 | **Crear admin** | `POST /users` | ✅ | ❌ | ❌ |
 | **Crear agent** | `POST /users` | ✅ | ❌ | ❌ |
@@ -268,18 +332,42 @@ DELETE /api/v1/clients/{id}
 | **Editar clientes** | `PUT /clients/{id}` | ✅ Propios | ✅ Propios | ✅ Propios |
 | **Eliminar clientes** | `DELETE /clients/{id}` | ✅ Propios | ✅ Propios | ✅ Propios |
 
-## 🧪 Pruebas con Postman
+## 🌐 **Uso desde el Frontend**
 
-### Configuración de Postman
-1. Crear colección "LatinGroup API"
-2. Configurar variable `base_url`: `http://127.0.0.1:8000`
-3. Usar variables para tokens: `admin_token`, `agent_token`, `client_token`
+### Login con Google
+Para implementar el botón "Iniciar sesión con Google" en tu frontend:
 
-### Flujo de pruebas recomendado:
-1. **Login** con diferentes usuarios
-2. **Probar permisos** - Intentar acciones no permitidas
-3. **Crear recursos** - Usuarios y clientes según permisos
-4. **Verificar ownership** - Recursos solo accesibles por owner
+```javascript
+// Redirigir al usuario a Google
+function loginWithGoogle() {
+  window.location.href = 'http://localhost:8000/api/v1/auth/google';
+}
+
+// El backend redirigirá automáticamente a:
+// http://localhost:4200/dashboard?token=abc123&user_type=client&user_id=1
+
+// En tu componente de dashboard, captura los parámetros de la URL:
+const urlParams = new URLSearchParams(window.location.search);
+const token = urlParams.get('token');
+const userType = urlParams.get('user_type');
+const userId = urlParams.get('user_id');
+const error = urlParams.get('error');
+const message = urlParams.get('message');
+
+// Manejo de errores
+if (error === 'access_denied') {
+  // Mostrar página de "Acceso denegado"
+  showAccessDeniedPage(message);
+  return;
+}
+
+// Manejo de login exitoso
+if (token) {
+  localStorage.setItem('auth_token', token);
+  localStorage.setItem('user_type', userType);
+  // Redirigir a la aplicación principal
+}
+```
 
 ## 📊 Base de Datos
 
@@ -361,8 +449,52 @@ Este proyecto está bajo la Licencia MIT.
 - ✅ **Arquitectura limpia** implementada
 - ✅ **Sistema de roles** funcional
 - ✅ **Base de datos** configurada y poblada
+- ✅ **Autenticación múltiple** (email + Google OAuth)
+- ✅ **Registro jerárquico** implementado
+- ✅ **Sistema de autenticación probado y verificado**
 - 🔄 **Frontend** pendiente de desarrollo
-- 🔄 **Documentación API** puede mejorarse
+- 🔄 **Documentación API** puede mejorarse con Swagger
+
+## 🧪 Pruebas Realizadas
+
+### ✅ Verificación del Sistema de Autenticación
+
+**Registro Público:**
+- ❌ Código 401/500 - Autenticación requerida correctamente aplicada
+- ✅ Middleware `auth:sanctum` protege la ruta de registro
+
+**Login con Email/Password:**
+- ✅ Admin puede loguearse: `admin@example.com` / `password123`
+- ✅ Agent puede loguearse: `agent@example.com` / `password123`
+- ✅ Client puede loguearse: `client@example.com` / `password123`
+
+**Registro Jerárquico:**
+- ✅ Admin puede registrar: clients ✅, admins ✅
+- ✅ Agent puede registrar: client (validado en código)
+- ✅ Agent NO puede registrar: admin ❌ (correctamente rechazado)
+- ✅ Client NO puede registrar: nadie (requiere autenticación)
+- ✅ **Email único**: Restricción validada (base de datos + aplicación)
+
+**Google OAuth:**
+- ✅ Solo usuarios registrados pueden usar Google OAuth
+- ✅ No hay restricciones por tipo de usuario
+- ✅ Redirección correcta al frontend con token y datos
+
+**Permisos Verificados:**
+- ✅ Autenticación requerida para todas las operaciones
+- ✅ Policies y Gates funcionando correctamente
+- ✅ Tokens JWT via Sanctum operativos
+- ✅ **Restricción de email único** validada (base de datos + aplicación)
+
+### 📊 Usuarios de Prueba Disponibles
+
+| Email | Password | Tipo | Permisos |
+|-------|----------|------|----------|
+| admin@example.com | password123 | admin | Crear admin, agent, client |
+| agent@example.com | password123 | agent | Crear client |
+| client@example.com | password123 | client | Solo acceso propio |
+| john@example.com | password123 | client | Solo acceso propio |
+| jane@example.com | password123 | client | Solo acceso propio |
 
 ---
 

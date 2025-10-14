@@ -44,30 +44,40 @@ class AuthService
         ];
     }
 
-    public function handleGoogleCallback(string $code): array
+    public function handleGoogleCallback(): array
     {
-        $googleUser = Socialite::driver('google')->userFromToken($code);
+        $googleUser = Socialite::driver('google')->stateless()->user();
 
-        $user = User::updateOrCreate(
-            ['email' => $googleUser->getEmail()],
-            [
-                'name' => $googleUser->getName(),
-                'google_id' => $googleUser->getId(),
-                'avatar' => $googleUser->getAvatar(),
-                'type' => 'client', // Por defecto client, o determinar basado en lógica
-            ]
-        );
+        // Buscar usuario existente por email
+        $user = User::where('email', $googleUser->getEmail())->first();
 
-        $token = $user->createToken('API Token')->plainTextToken;
+        // Verificar que el usuario existe
+        if (!$user) {
+            throw new \Exception('Usuario no registrado en el sistema');
+        }
+
+        // Actualizar información de Google si es necesario
+        $user->update([
+            'google_id' => $googleUser->getId(),
+            'avatar' => $googleUser->getAvatar(),
+            'name' => $googleUser->getName(), // Actualizar nombre si cambió
+        ]);
+
+        $token = $user->createToken('google-token')->plainTextToken;
 
         return [
-            'user' => $user,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'type' => $user->type,
+            ],
             'token' => $token,
         ];
     }
 
-    public function getGoogleRedirectUrl(): string
+    public function redirectToGoogle(): \Symfony\Component\HttpFoundation\RedirectResponse
     {
-        return Socialite::driver('google')->redirect()->getTargetUrl();
+        return Socialite::driver('google')->stateless()->redirect();
     }
 }
