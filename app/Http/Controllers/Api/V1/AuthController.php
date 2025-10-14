@@ -30,6 +30,22 @@ class AuthController extends Controller
     {
         $data = RegisterUserData::from($request->all());
 
+        // Si no hay usuario autenticado (registro público), solo permitir type 'client'
+        if (!$request->user()) {
+            if ($data->type !== 'client') {
+                return response()->json([
+                    'error' => 'Solo puedes registrarte como cliente. Contacta a un administrador para otros tipos de cuenta.'
+                ], 403);
+            }
+        } else {
+            // Si hay usuario autenticado, verificar permisos
+            if (!$request->user()->can('createUserType', $data->type)) {
+                return response()->json([
+                    'error' => 'No tienes permisos para crear usuarios de este tipo'
+                ], 403);
+            }
+        }
+
         try {
             $result = $this->authService->register($data);
             return response()->json($result, 201);

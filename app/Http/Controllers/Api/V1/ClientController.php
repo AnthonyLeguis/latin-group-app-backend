@@ -8,6 +8,7 @@ use App\Models\Client;
 use App\Services\ClientManagementService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class ClientController extends Controller
 {
@@ -17,6 +18,13 @@ class ClientController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        // Validar permisos: solo admin y agent pueden crear clientes
+        if ($request->user()->isClient()) {
+            return response()->json([
+                'error' => 'No tienes permisos para crear clientes'
+            ], 403);
+        }
+
         $data = ClientData::from($request->all());
 
         try {

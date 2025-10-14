@@ -26,13 +26,14 @@ class AuthService
         ];
     }
 
-    public function register(RegisterUserData $data): array
+    public function register(RegisterUserData $data, ?int $createdBy = null): array
     {
         $user = User::create([
             'name' => $data->name,
             'email' => $data->email,
             'password' => Hash::make($data->password),
             'type' => $data->type,
+            'created_by' => $createdBy,
         ]);
 
         $token = $user->createToken('API Token')->plainTextToken;

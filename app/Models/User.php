@@ -18,6 +18,7 @@ class User extends Authenticatable
         'type', // admin, agent, client
         'google_id',
         'avatar',
+        'created_by',
     ];
 
     protected $hidden = [
@@ -44,5 +45,16 @@ class User extends Authenticatable
     public function isClient()
     {
         return $this->type === 'client';
+    }
+
+    // Relaciones para rastrear creación de usuarios
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function createdUsers()
+    {
+        return $this->hasMany(User::class, 'created_by');
     }
 }
