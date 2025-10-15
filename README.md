@@ -277,6 +277,96 @@ PUT /api/v1/clients/{id}
 DELETE /api/v1/clients/{id}
 ```
 
+### 📄 Gestión de Planillas de Aplicación
+
+**Headers requeridos:**
+```
+Authorization: Bearer {token}
+Content-Type: application/json
+```
+
+#### Listar planillas de aplicación
+```http
+GET /api/v1/application-forms
+GET /api/v1/application-forms?status=En%20Revisión
+GET /api/v1/application-forms?client_id={id}
+```
+
+#### Crear planilla de aplicación
+```http
+POST /api/v1/application-forms
+
+{
+  "client_id": 3,
+  "applicant_name": "Juan Pérez",
+  "dob": "1990-05-15",
+  "address": "Calle 123 #45-67",
+  "city": "Bogotá",
+  "state": "Cundinamarca",
+  "zip_code": "110111",
+  "phone": "+57 300 123 4567",
+  "email": "juan@example.com",
+  "gender": "M",
+  "ssn": "123-45-6789",
+  "legal_status": "Ciudadano",
+  "document_number": "123456789",
+  // ... otros campos según la estructura completa
+}
+```
+
+#### Ver planilla específica
+```http
+GET /api/v1/application-forms/{id}
+```
+
+#### Actualizar planilla
+```http
+PUT /api/v1/application-forms/{id}
+
+{
+  "applicant_name": "Juan Pérez Actualizado",
+  // ... otros campos a actualizar
+}
+```
+
+#### Confirmar planilla (solo el agente creador)
+```http
+POST /api/v1/application-forms/{id}/confirm
+
+{
+  "confirmed": true
+}
+```
+
+#### Actualizar status (solo admin)
+```http
+POST /api/v1/application-forms/{id}/status
+
+{
+  "status": "Activo",
+  "status_comment": "Planilla aprobada y completa"
+}
+```
+
+#### Subir documento
+```http
+POST /api/v1/application-forms/{id}/documents
+Content-Type: multipart/form-data
+
+document: (archivo)
+document_type: "cedula"
+```
+
+#### Eliminar documento
+```http
+DELETE /api/v1/application-forms/{id}/documents/{documentId}
+```
+
+#### Eliminar planilla (solo admin)
+```http
+DELETE /api/v1/application-forms/{id}
+```
+
 ## 🔐 Flujo de Registro y Autenticación
 
 ### 📝 Proceso de Registro
@@ -314,23 +404,98 @@ GET /api/v1/auth/google
 - **Jerarquía de registro:** Admin > Agent > Client (cada nivel puede registrar el inferior)
 - **Interfaz diferenciada:** El frontend muestra diferentes vistas según el tipo de usuario
 
-## 🔐 Matriz de Permisos
+## � Flujo de Planillas de Aplicación
 
-| Acción | Endpoint | Admin | Agent | Client |
-|--------|----------|-------|-------|--------|
-| **Login con email** | `POST /auth/login` | ✅ | ✅ | ✅ |
-| **Registro público** | `POST /auth/register` | ❌ | ❌ | ❌ |
-| **Login con Google** | `GET /auth/google` | ✅ | ✅ | ✅ |
-| **Ver usuarios** | `GET /users` | ✅ Todos | ❌ Solo clients | ❌ |
-| **Crear admin** | `POST /users` | ✅ | ❌ | ❌ |
-| **Crear agent** | `POST /users` | ✅ | ❌ | ❌ |
-| **Crear client** | `POST /users` | ✅ | ✅ | ❌ |
-| **Editar usuarios** | `PUT /users/{id}` | ✅ Cualquier | ✅ Solo clients | ❌ |
-| **Eliminar usuarios** | `DELETE /users/{id}` | ✅ | ❌ | ❌ |
-| **Crear clientes** | `POST /clients` | ✅ | ✅ | ❌ |
-| **Ver clientes** | `GET /clients` | ✅ Propios | ✅ Propios | ✅ Propios |
-| **Editar clientes** | `PUT /clients/{id}` | ✅ Propios | ✅ Propios | ✅ Propios |
-| **Eliminar clientes** | `DELETE /clients/{id}` | ✅ Propios | ✅ Propios | ✅ Propios |
+### 📋 Proceso de Creación
+
+1. **Agent registra usuario tipo client** usando `/api/v1/auth/register`
+2. **Agent crea planilla de aplicación** usando `/api/v1/application-forms`
+3. **Planilla se crea con status "En Revisión"** y `confirmed = false`
+4. **Agent puede editar** la planilla mientras no esté confirmada
+5. **Agent confirma la planilla** marcando `confirmed = true`
+6. **Admin puede cambiar status** a "Activo" o "Inactivo" con comentarios
+7. **Cualquier usuario autorizado** puede subir documentos a la planilla
+
+### 🔐 Estados y Transiciones
+
+| Estado | Descripción | Transiciones | Editable |
+|--------|-------------|--------------|----------|
+| **En Revisión** | Planilla creada, pendiente de confirmación | → Activo, → Inactivo | ✅ Agent |
+| **Activo** | Planilla confirmada y aprobada | → Inactivo | ❌ |
+| **Inactivo** | Planilla rechazada o suspendida | → Activo, → En Revisión | ❌ |
+
+### 📎 Gestión de Documentos
+
+- **Formatos permitidos**: JPEG, JPG, PNG, PDF
+- **Tamaño máximo**: 5MB por archivo
+- **Almacenamiento**: Disco `public` con URLs accesibles
+- **Eliminación automática**: Archivos se eliminan al borrar documentos
+- **Tipos de documento**: Configurable (cedula, recibo, contrato, etc.)
+
+## 📊 Estructura de Datos - Planillas de Aplicación
+
+### Campos de la Planilla (47 campos principales)
+
+#### 📝 **Datos de Aplicación (1-24)**
+- `agent_name`: Nombre del agente (automático)
+- `applicant_name`: Nombre del solicitante
+- `dob`: Fecha de nacimiento
+- `address`: Dirección completa
+- `unit_apt`: Unidad/Apartamento
+- `city`: Ciudad
+- `state`: Estado/Provincia
+- `zip_code`: Código postal
+- `phone`: Teléfono principal
+- `phone2`: Teléfono secundario
+- `email`: Correo electrónico
+- `gender`: Género (M/F)
+- `ssn`: Número de Seguro Social
+- `legal_status`: Estado legal
+- `document_number`: Número de documento
+- `insurance_company`: Compañía de seguro
+- `insurance_plan`: Plan de seguro
+- `subsidy`: Subsidio
+- `final_cost`: Costo final
+- `employment_type`: Tipo de empleo (W2/1099/Other)
+- `employment_company_name`: Nombre de empresa
+- `work_phone`: Teléfono laboral
+- `wages`: Salario
+- `wages_frequency`: Frecuencia de pago
+
+#### 🏠 **Datos de Póliza (25-29)**
+- `poliza_number`: Número de póliza
+- `poliza_category`: Categoría de póliza
+- `poliza_amount`: Monto de póliza
+- `poliza_payment_day`: Día de cobro
+- `poliza_beneficiary`: Beneficiario
+
+#### 👥 **Datos de Personas Adicionales (30-139)**
+*Se repite para 4 personas (Person 1, 2, 3, 4):*
+- `person{N}_name`: Nombre
+- `person{N}_relation`: Relación con el aplicante
+- `person{N}_is_applicant`: Es el aplicante (Y/N)
+- `person{N}_legal_status`: Estado legal
+- `person{N}_document_number`: Número de documento
+- `person{N}_dob`: Fecha de nacimiento
+- `person{N}_company_name`: Nombre de empresa
+- `person{N}_ssn`: SSN
+- `person{N}_gender`: Género
+- `person{N}_wages`: Salario
+- `person{N}_frequency`: Frecuencia de pago
+
+#### 💳 **Datos de Método de Pago (140-147)**
+- `card_type`: Tipo de tarjeta
+- `card_number`: Número de tarjeta
+- `card_expiration`: Fecha de expiración
+- `card_cvv`: Código CVV
+- `bank_name`: Nombre del banco
+- `bank_routing`: Número de ruta bancaria
+- `bank_account`: Número de cuenta
+
+#### ⚙️ **Campos de Control**
+- `status`: Estado (Activo/Inactivo/En Revisión)
+- `status_comment`: Comentario del status
+- `confirmed`: Confirmación del agente (boolean)
 
 ## 🌐 **Uso desde el Frontend**
 
@@ -369,21 +534,178 @@ if (token) {
 }
 ```
 
-## 📊 Base de Datos
+## � **Planillas de Aplicación**
 
-### Tablas principales:
-- **`users`** - Usuarios del sistema con roles
-- **`clients`** - Datos adicionales de clientes
-- **`personal_access_tokens`** - Tokens de Sanctum
+### 🎯 **Funcionalidad**
+Sistema completo para que los **agents** puedan crear y gestionar planillas de aplicación para sus clientes. Incluye datos personales, información financiera, personas adicionales, métodos de pago, y subida de documentos.
 
-### Relaciones:
-- **User → Clients**: Un usuario puede tener múltiples clientes
-- **User → User**: Rastreo de creación (`created_by`)
+### 📝 **Campos de la Planilla**
 
-### Migraciones importantes:
-- `create_users_table` - Usuarios con tipos y `created_by`
-- `create_clients_table` - Datos de clientes asociados a usuarios
-- `add_created_by_to_users_table` - Campo de auditoría
+#### **Datos de la Application (1-24)**
+- `agent_name` - Nombre del agente (automático)
+- `applicant_name` - Nombre del solicitante
+- `dob` - Fecha de nacimiento
+- `address` - Dirección completa
+- `unit_apt` - Unidad/Apartamento
+- `city`, `state`, `zip_code` - Ubicación
+- `phone`, `phone2` - Teléfonos
+- `email` - Correo electrónico
+- `gender` - Género (M/F)
+- `ssn` - Número de Seguro Social
+- `legal_status` - Estado legal
+- `document_number` - Número de documento
+- `insurance_company`, `insurance_plan` - Seguro
+- `subsidy`, `final_cost` - Subsidio y costo final
+- `employment_type` - Tipo de empleo (W2/1099/Other)
+- `employment_company_name` - Nombre de empresa
+- `work_phone` - Teléfono laboral
+- `wages`, `wages_frequency` - Salario y frecuencia
+
+#### **Datos de la PÓLIZA (25-29)**
+- `poliza_number` - Número de póliza
+- `poliza_category` - Categoría de póliza
+- `poliza_amount` - Monto de póliza
+- `poliza_payment_day` - Día de cobro
+- `poliza_beneficiary` - Beneficiario
+
+#### **Personas Adicionales (30-40 x 4 personas)**
+Cada persona incluye: `name`, `relation`, `is_applicant`, `legal_status`, `document_number`, `dob`, `company_name`, `ssn`, `gender`, `wages`, `frequency`
+
+#### **Método de Pago (41-47)**
+- `card_type`, `card_number`, `card_expiration`, `card_cvv`
+- `bank_name`, `bank_routing`, `bank_account`
+
+#### **Control y Estado**
+- `status` - Activo/Inactivo/En Revisión
+- `status_comment` - Comentario del status
+- `confirmed` - Confirmación del agente
+
+### 📎 **Documentos Adjuntos**
+- Subida de archivos (imágenes/PDF)
+- Tipos: cédula, recibo, contrato, etc.
+- Almacenamiento en `storage/app/public/application_documents`
+- Eliminación automática al borrar planilla
+
+### 🔐 **Permisos por Rol**
+
+| Acción | Admin | Agent | Client |
+|--------|-------|-------|--------|
+| **Ver planillas** | ✅ Todas | ✅ Propias | ✅ Propia |
+| **Crear planilla** | ❌ | ✅ Para sus clients | ❌ |
+| **Editar planilla** | ✅ Siempre | ✅ Solo no confirmadas | ❌ |
+| **Confirmar planilla** | ❌ | ✅ Propias | ❌ |
+| **Cambiar status** | ✅ Todas | ❌ | ❌ |
+| **Subir documentos** | ✅ Todas | ✅ Propias | ❌ |
+| **Eliminar planilla** | ✅ Todas | ❌ | ❌ |
+
+### 🚀 **API Endpoints**
+
+#### **Gestión de Planillas**
+```http
+GET    /api/v1/application-forms          # Listar planillas
+POST   /api/v1/application-forms          # Crear planilla
+GET    /api/v1/application-forms/{id}     # Ver planilla específica
+PUT    /api/v1/application-forms/{id}     # Actualizar planilla
+DELETE /api/v1/application-forms/{id}     # Eliminar planilla (solo admin)
+```
+
+#### **Acciones Especiales**
+```http
+POST   /api/v1/application-forms/{id}/confirm     # Confirmar planilla
+POST   /api/v1/application-forms/{id}/status      # Cambiar status (solo admin)
+POST   /api/v1/application-forms/{id}/documents   # Subir documento
+DELETE /api/v1/application-forms/{id}/documents/{docId}  # Eliminar documento
+```
+
+#### **Ejemplo: Crear Planilla**
+```http
+POST /api/v1/application-forms
+Authorization: Bearer {agent_token}
+Content-Type: application/json
+
+{
+  "client_id": 5,
+  "applicant_name": "Juan Pérez",
+  "dob": "1990-05-15",
+  "address": "123 Main St",
+  "city": "Miami",
+  "state": "FL",
+  "zip_code": "33101",
+  "phone": "305-123-4567",
+  "email": "juan@example.com",
+  "gender": "M",
+  "ssn": "123-45-6789",
+  "legal_status": "Citizen",
+  "document_number": "DOC123456",
+  "employment_type": "W2",
+  "employment_company_name": "ABC Corp",
+  "wages": 45000.00,
+  "wages_frequency": "Monthly"
+}
+```
+
+#### **Ejemplo: Subir Documento**
+```http
+POST /api/v1/application-forms/{id}/documents
+Authorization: Bearer {token}
+Content-Type: multipart/form-data
+
+document: (file) cedula_juan.pdf
+document_type: cedula
+```
+
+### 📊 **Flujo de Trabajo**
+
+1. **Agent registra cliente** → Usuario tipo `client` creado
+2. **Agent crea planilla** → Formulario con todos los datos
+3. **Agent confirma planilla** → `confirmed = true`
+4. **Admin revisa y aprueba** → Cambia `status` a "Activo"
+5. **Agent sube documentos** → Archivos adjuntos a la planilla
+6. **Client puede ver** → Su propia planilla (solo lectura)
+
+### 🧪 **Pruebas del Sistema**
+
+```bash
+# Ejecutar pruebas de planillas
+php test_application_forms.php
+```
+
+**Resultados esperados:**
+- ✅ Agent puede crear planillas para sus clients
+- ✅ Agent puede confirmar planillas
+- ✅ Admin puede cambiar status
+- ✅ Agent NO puede editar planillas confirmadas
+- ✅ Admin puede editar cualquier planilla
+- ✅ Subida y eliminación de documentos funciona
+
+### 💾 **Estructura de Base de Datos**
+
+#### **application_forms**
+- 47 campos de datos + control
+- Relaciones: `client_id`, `agent_id`
+- Índices optimizados
+
+#### **application_documents**
+- Metadatos de archivos
+- Relación con planilla
+- Eliminación automática de archivos
+
+### 🔧 **Configuración de Almacenamiento**
+
+```bash
+# Crear enlace simbólico (ya ejecutado)
+php artisan storage:link
+
+# Directorio creado automáticamente
+storage/app/public/application_documents/
+```
+
+### 📈 **Próximas Funcionalidades**
+- [ ] Notificaciones por email al cambiar status
+- [ ] Historial de cambios en planillas
+- [ ] Generación de PDF de planillas
+- [ ] Firma digital de documentos
+- [ ] Integración con servicios externos
 
 ## 🧪 Testing
 
@@ -450,41 +772,45 @@ Este proyecto está bajo la Licencia MIT.
 - ✅ **Sistema de roles** funcional
 - ✅ **Base de datos** configurada y poblada
 - ✅ **Autenticación múltiple** (email + Google OAuth)
-- ✅ **Registro jerárquico** implementado
+- ✅ **Registro jerárquico** implementado y probado
 - ✅ **Sistema de autenticación probado y verificado**
+- ✅ **Planillas de aplicación** completamente implementadas y probadas
+- ✅ **Sistema de documentos** con subida y gestión de archivos
+- ✅ **Permisos avanzados** por rol implementados
 - 🔄 **Frontend** pendiente de desarrollo
 - 🔄 **Documentación API** puede mejorarse con Swagger
 
 ## 🧪 Pruebas Realizadas
 
-### ✅ Verificación del Sistema de Autenticación
+### ✅ Verificación del Sistema de Planillas de Aplicación
 
-**Registro Público:**
-- ❌ Código 401/500 - Autenticación requerida correctamente aplicada
-- ✅ Middleware `auth:sanctum` protege la ruta de registro
+**Creación de Planillas:**
+- ✅ Agent puede crear planillas para sus clients
+- ✅ Validación completa de 47+ campos
+- ✅ Un cliente solo puede tener una planilla
 
-**Login con Email/Password:**
-- ✅ Admin puede loguearse: `admin@example.com` / `password123`
-- ✅ Agent puede loguearse: `agent@example.com` / `password123`
-- ✅ Client puede loguearse: `client@example.com` / `password123`
+**Permisos y Control:**
+- ✅ Agent puede confirmar planillas (`confirmed = true`)
+- ✅ Admin puede cambiar status (Activo/Inactivo/En Revisión)
+- ✅ Agent NO puede editar planillas confirmadas
+- ✅ Admin puede editar cualquier planilla
+- ✅ Client solo puede ver su propia planilla
 
-**Registro Jerárquico:**
-- ✅ Admin puede registrar: clients ✅, admins ✅
-- ✅ Agent puede registrar: client (validado en código)
-- ✅ Agent NO puede registrar: admin ❌ (correctamente rechazado)
-- ✅ Client NO puede registrar: nadie (requiere autenticación)
-- ✅ **Email único**: Restricción validada (base de datos + aplicación)
+**Sistema de Documentos:**
+- ✅ Subida de archivos (imágenes/PDF hasta 5MB)
+- ✅ Almacenamiento seguro en directorio dedicado
+- ✅ Eliminación automática de archivos al borrar planilla
+- ✅ Metadatos completos (tipo, tamaño, nombre original)
 
-**Google OAuth:**
-- ✅ Solo usuarios registrados pueden usar Google OAuth
-- ✅ No hay restricciones por tipo de usuario
-- ✅ Redirección correcta al frontend con token y datos
+**Flujo de Trabajo Validado:**
+1. ✅ Agent crea client → Agent crea planilla → Agent confirma
+2. ✅ Admin revisa → Admin aprueba (status: Activo)
+3. ✅ Agent sube documentos → Sistema operativo completo
 
-**Permisos Verificados:**
-- ✅ Autenticación requerida para todas las operaciones
-- ✅ Policies y Gates funcionando correctamente
-- ✅ Tokens JWT via Sanctum operativos
-- ✅ **Restricción de email único** validada (base de datos + aplicación)
+**Pruebas Automatizadas:**
+- ✅ Script `test_application_forms.php` ejecutado exitosamente
+- ✅ Todos los endpoints probados y funcionales
+- ✅ Manejo de errores y permisos validado
 
 ### 📊 Usuarios de Prueba Disponibles
 

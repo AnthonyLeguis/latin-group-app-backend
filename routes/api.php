@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\ApplicationFormController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\UserController;
@@ -21,5 +22,12 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
 
     // Gestión de clientes
     Route::apiResource('clients', ClientController::class);
+
+    // Gestión de planillas de aplicación
+    Route::apiResource('application-forms', ApplicationFormController::class);
+    Route::post('application-forms/{form}/confirm', [ApplicationFormController::class, 'confirm']);
+    Route::post('application-forms/{form}/status', [ApplicationFormController::class, 'updateStatus']);
+    Route::post('application-forms/{form}/documents', [ApplicationFormController::class, 'uploadDocument']);
+    Route::delete('application-forms/{form}/documents/{documentId}', [ApplicationFormController::class, 'deleteDocument']);
 });
 

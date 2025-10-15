@@ -57,4 +57,20 @@ class User extends Authenticatable
     {
         return $this->hasMany(User::class, 'created_by');
     }
+
+    // Relaciones para application forms
+    public function applicationFormsAsClient()
+    {
+        return $this->hasMany(ApplicationForm::class, 'client_id');
+    }
+
+    public function applicationFormsAsAgent()
+    {
+        return $this->hasMany(ApplicationForm::class, 'agent_id');
+    }
+
+    public function uploadedDocuments()
+    {
+        return $this->hasMany(ApplicationDocument::class, 'uploaded_by');
+    }
 }
