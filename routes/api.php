@@ -7,6 +7,11 @@ use App\Http\Controllers\Api\V1\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+
+// Ruta pública para formulario de contacto
+Route::post('v1/contact', [\App\Http\Controllers\Api\V1\ContactController::class, 'submit'])
+    ->middleware('throttle:5,1');
+
 // Rutas de Autenticación (Acceso público)
 Route::post('v1/auth/login', [AuthController::class, 'login']);
 Route::get('v1/auth/google', [AuthController::class, 'googleRedirect']);
