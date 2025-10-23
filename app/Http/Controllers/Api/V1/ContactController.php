@@ -10,27 +10,34 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use App\Services\RecaptchaEnterpriseService;
 use App\Mail\ContactUsNotification;
 
 class ContactController extends Controller
 {
-    public function submit(ContactFormRequest $request): JsonResponse
+    public function submit(ContactFormRequest $request, RecaptchaEnterpriseService $recaptchaService): JsonResponse
     {
-        // Validar reCAPTCHA v3/v2
+        // Validar reCAPTCHA Enterprise
         $recaptchaToken = $request->input('recaptcha_token');
-        $recaptchaSecret = env('RECAPTCHA_SECRET_KEY');
-        $recaptchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-            'secret' => $recaptchaSecret,
-            'response' => $recaptchaToken,
-            'remoteip' => $request->ip(),
-        ]);
-        $recaptchaData = $recaptchaResponse->json();
-        if (empty($recaptchaData['success']) || ($recaptchaData['success'] !== true)) {
+        $recaptchaKey = config('services.recaptcha.site_key');
+        $projectId = config('services.recaptcha.project_id');
+        $action = 'submit_contact'; // Debe coincidir con el frontend
+        $minScore = 0.5;
+
+        \Log::info('Contact request data', $request->all());
+        $result = $recaptchaService->assess($recaptchaKey, $recaptchaToken, $projectId, $action);
+        \Log::info('Recaptcha assessment result', $result);
+
+        if (!$result['success'] || ($result['score'] ?? 0) < $minScore) {
+            \Log::warning('Recaptcha failed or score too low', $result);
             return response()->json([
                 'success' => false,
-                'message' => 'No se pudo verificar el reCAPTCHA. Intenta nuevamente.',
+                'message' => 'No se pudo verificar el reCAPTCHA Enterprise o el score es bajo.',
+                'score' => $result['score'] ?? null,
+                'reason' => $result['reason'] ?? null,
             ], 429);
         }
+        
         $data = new ContactFormData($request->validated());
 
         $contact = ContactUs::create([
