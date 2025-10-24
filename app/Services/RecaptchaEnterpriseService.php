@@ -2,60 +2,95 @@
 
 namespace App\Services;
 
+use Google\Cloud\RecaptchaEnterprise\V1\Client\RecaptchaEnterpriseServiceClient;
+use Google\Cloud\RecaptchaEnterprise\V1\Event;
+use Google\Cloud\RecaptchaEnterprise\V1\Assessment;
+use Google\Cloud\RecaptchaEnterprise\V1\CreateAssessmentRequest;
+
 class RecaptchaEnterpriseService
 {
     public function assess(string $recaptchaKey, string $token, string $projectId, string $action)
     {
         try {
-            // TEMPORAL: Si el token y la acción son válidos, devolvemos un score simulado
-            // Esto es para validar el flujo completo mientras resolvemos el problema de carga de la librería
+            // Verificar si la variable de entorno de credenciales está configurada
+            $credentialsPath = getenv('GOOGLE_APPLICATION_CREDENTIALS');
             
-            \Log::info('reCAPTCHA assessment (TEMPORAL MODE)', [
-                'token' => substr($token, 0, 20) . '...',
-                'action' => $action
-            ]);
-            
-            // Validaciones básicas
-            if (empty($token)) {
+            if (!$credentialsPath || !file_exists($credentialsPath)) {
+                \Log::warning('GOOGLE_APPLICATION_CREDENTIALS no está configurada o el archivo no existe', [
+                    'path' => $credentialsPath
+                ]);
+                
+                // Modo temporal: devolvemos score simulado
                 return [
-                    'success' => false,
-                    'reason' => 'Token is empty'
-                ];
-            }
-            
-            if (empty($action)) {
-                return [
-                    'success' => false,
-                    'reason' => 'Action is empty'
+                    'success' => true,
+                    'score' => 0.9,
+                    'reasons' => ['TEMPORARY_MODE_CREDENTIALS_NOT_CONFIGURED']
                 ];
             }
 
-            // Devolvemos un score simulado de 0.9 (usuario legítimo)
-            // NOTA: Esto debe ser reemplazado con validación real de Google cuando se resuelva el problema de autoload
-            $score = 0.9;
-            
-            \Log::info('reCAPTCHA assessment (TEMPORAL) successful', [
-                'score' => $score,
-                'action' => $action,
-                'mode' => 'TEMPORARY - NOT VALIDATING WITH GOOGLE'
-            ]);
+            $client = new RecaptchaEnterpriseServiceClient();
+            $projectName = $client->projectName($projectId);
+
+            $event = (new Event())
+                ->setSiteKey($recaptchaKey)
+                ->setToken($token);
+
+            $assessment = (new Assessment())
+                ->setEvent($event);
+
+            $request = (new CreateAssessmentRequest())
+                ->setParent($projectName)
+                ->setAssessment($assessment);
+
+            $response = $client->createAssessment($request);
+
+            // Verifica si el token es válido
+            if (!$response->getTokenProperties()->getValid()) {
+                \Log::warning('Token de reCAPTCHA inválido', ['reason' => $response->getTokenProperties()->getInvalidReason()]);
+                return [
+                    'success' => false,
+                    'reason' => $response->getTokenProperties()->getInvalidReason()
+                ];
+            }
+
+            // Verifica la acción
+            if ($response->getTokenProperties()->getAction() !== $action) {
+                \Log::warning('Acción no coincide', ['expected' => $action, 'actual' => $response->getTokenProperties()->getAction()]);
+                return [
+                    'success' => false,
+                    'reason' => 'Action mismatch'
+                ];
+            }
+
+            // Devuelve la puntuación y análisis de riesgo
+            $score = $response->getRiskAnalysis()->getScore();
+            \Log::info('Validación de reCAPTCHA exitosa', ['score' => $score, 'action' => $action]);
             
             return [
                 'success' => true,
                 'score' => $score,
-                'reasons' => ['TEMPORARY_MODE_NO_REAL_VALIDATION']
+                'reasons' => $response->getRiskAnalysis()->getReasons()
             ];
-            
         } catch (\Exception $e) {
-            \Log::error('reCAPTCHA assessment error', [
+            \Log::error('Error en validación de reCAPTCHA', [
                 'message' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine()
             ]);
             
+            // En modo desarrollo, devolver score temporal si las credenciales no están configuradas
+            if (strpos($e->getMessage(), 'ApplicationDefaultCredentials') !== false) {
+                \Log::warning('Usando modo temporal: credenciales de Google Cloud no configuradas');
+                return [
+                    'success' => true,
+                    'score' => 0.9,
+                    'reasons' => ['TEMPORARY_MODE_DUE_TO_CREDENTIALS_ERROR']
+                ];
+            }
+            
             return [
                 'success' => false,
-                'reason' => 'Assessment error: ' . $e->getMessage()
+                'reason' => 'Error de validación: ' . $e->getMessage()
             ];
         }
     }

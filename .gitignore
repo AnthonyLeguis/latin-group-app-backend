@@ -35,3 +35,6 @@ composer.lock
 # Temporary files
 *.tmp
 *.swp
+
+# Certificados SSL locales
+/storage/ssl/
