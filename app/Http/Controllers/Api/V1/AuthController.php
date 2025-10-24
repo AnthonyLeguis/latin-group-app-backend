@@ -77,7 +77,7 @@ class AuthController extends Controller
             $errorMessage = $e->getMessage();
 
             // Redirigir a página de error según el tipo de error
-            $frontendUrl = env('FRONTEND_URL', 'http://localhost:4200') . '/access-denied';
+            $frontendUrl = env('FRONTEND_URL', 'http://localhost:4200') . '/auth/access-denied';
 
             $queryParams = http_build_query([
                 'error' => 'access_denied',

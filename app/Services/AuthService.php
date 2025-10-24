@@ -13,11 +13,18 @@ class AuthService
 {
     public function login(LoginData $data): array
     {
-        if (!Auth::attempt(['email' => $data->email, 'password' => $data->password])) {
-            throw new \Exception('Credenciales inválidas');
+        // Verificar si el usuario existe
+        $user = User::where('email', $data->email)->first();
+
+        if (!$user) {
+            throw new \Exception('Usuario no encontrado o no autorizado');
         }
 
-        $user = Auth::user();
+        // Verificar la contraseña
+        if (!Hash::check($data->password, $user->password)) {
+            throw new \Exception('Contraseña inválida');
+        }
+
         $token = $user->createToken('API Token')->plainTextToken;
 
         return [
