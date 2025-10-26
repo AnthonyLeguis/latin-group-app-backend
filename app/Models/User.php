@@ -19,6 +19,7 @@ class User extends Authenticatable
         'google_id',
         'avatar',
         'created_by',
+        'updated_by',
     ];
 
     protected $hidden = [
@@ -51,6 +52,11 @@ class User extends Authenticatable
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function updatedBy()
+    {
+        return $this->belongsTo(User::class, 'updated_by');
     }
 
     public function createdUsers()

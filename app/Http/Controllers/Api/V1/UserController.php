@@ -27,17 +27,105 @@ class UserController extends Controller
 
         // Filtrar por tipo si se especifica
         if ($request->has('type')) {
-            $query->where('type', $request->type);
+            $type = $request->type;
+            $query->where('type', $type);
+
+            // Si es admin pidiendo agents, incluir sus clients
+            if ($request->user()->isAdmin() && $type === 'agent') {
+                $query->with(['createdUsers' => function ($q) {
+                    $q->where('type', 'client')
+                      ->orderBy('created_at', 'desc');
+                }]);
+            }
         }
 
-        // Admin ve todos, agent solo clients
+        // Siempre cargar quien creó al usuario
+        $query->with('createdBy');
+
+        // Admin ve todos, agent solo clients que él creó
         if ($request->user()->isAgent()) {
-            $query->where('type', 'client');
+            $query->where('type', 'client')
+                  ->where('created_by', $request->user()->id);
         }
+
+        // Ordenar por fecha de creación (más recientes primero)
+        $query->orderBy('created_at', 'desc');
 
         $users = $query->paginate(15);
 
-        return response()->json(['users' => $users]);
+        return response()->json($users);
+    }
+
+    /**
+     * Obtener estadísticas de usuarios (solo admin)
+     */
+    public function stats(Request $request): JsonResponse
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $stats = [
+            'total_users' => User::count(),
+            'total_admins' => User::where('type', 'admin')->count(),
+            'total_agents' => User::where('type', 'agent')->count(),
+            'total_clients' => User::where('type', 'client')->count(),
+            'recent_users' => User::orderBy('created_at', 'desc')->take(5)->get(),
+        ];
+
+        return response()->json($stats);
+    }
+
+    /**
+     * Obtener reporte detallado de agentes con sus clientes (solo admin)
+     */
+    public function agentsReport(Request $request): JsonResponse
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // Obtener todos los agents con sus clients y application_forms
+        $agents = User::where('type', 'agent')
+            ->with(['createdUsers' => function ($query) {
+                $query->where('type', 'client')
+                      ->with(['applicationFormsAsClient' => function ($q) {
+                          $q->with('reviewedBy')
+                            ->orderBy('created_at', 'desc');
+                      }])
+                      ->orderBy('created_at', 'desc')
+                      ->select('id', 'name', 'email', 'created_by', 'created_at', 'updated_at');
+            }])
+            ->withCount(['createdUsers as clients_count' => function ($query) {
+                $query->where('type', 'client');
+            }])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'agents' => $agents,
+            'total_agents' => $agents->count(),
+            'total_clients' => User::where('type', 'client')->count(),
+        ]);
+    }
+
+    /**
+     * Obtener planillas pendientes de revisión (solo admin)
+     */
+    public function pendingForms(Request $request): JsonResponse
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $status = $request->input('status', \App\Models\ApplicationForm::STATUS_PENDING);
+
+        $forms = \App\Models\ApplicationForm::where('status', $status)
+            ->with(['client', 'agent', 'reviewedBy'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
+
+        return response()->json($forms);
     }
 
     /**
@@ -46,6 +134,9 @@ class UserController extends Controller
     public function show(User $user): JsonResponse
     {
         $this->authorize('view', $user);
+
+        // Cargar las relaciones de quién lo creó y actualizó
+        $user->load(['createdBy', 'updatedBy']);
 
         return response()->json(['user' => $user]);
     }
@@ -68,6 +159,29 @@ class UserController extends Controller
 
         try {
             $result = $this->authService->register($data, $request->user()->id);
+            
+            // Si se creó un client, crear automáticamente su application_form
+            if ($data->type === 'client') {
+                $agentId = $request->user()->isAgent() 
+                    ? $request->user()->id 
+                    : $request->input('agent_id'); // Admin debe especificar el agent
+                
+                if (!$agentId) {
+                    return response()->json([
+                        'error' => 'Debe especificar un agente para el cliente'
+                    ], 400);
+                }
+
+                \App\Models\ApplicationForm::create([
+                    'client_id' => $result['user']->id,
+                    'agent_id' => $agentId,
+                    'agent_name' => User::find($agentId)->name,
+                    'applicant_name' => $result['user']->name,
+                    'email' => $result['user']->email,
+                    'status' => \App\Models\ApplicationForm::STATUS_PENDING,
+                ]);
+            }
+            
             return response()->json($result, 201);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 400);
@@ -97,10 +211,14 @@ class UserController extends Controller
         }
 
         try {
+            // Registrar quién hizo la actualización
+            $validated['updated_by'] = $request->user()->id;
+            
             $user->update($validated);
+            
             return response()->json([
                 'message' => 'Usuario actualizado exitosamente',
-                'user' => $user->fresh()
+                'user' => $user->fresh(['createdBy', 'updatedBy'])
             ]);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 400);

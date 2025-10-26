@@ -44,8 +44,24 @@ class ApplicationForm extends Model
         'bank_name', 'bank_routing', 'bank_account',
 
         // Status and Confirmation
-        'status', 'status_comment', 'confirmed'
+        'status', 'status_comment', 'confirmed', 'reviewed_by', 'reviewed_at'
     ];
+
+    // Status constants
+    const STATUS_PENDING = 'pendiente';
+    const STATUS_ACTIVE = 'activo';
+    const STATUS_INACTIVE = 'inactivo';
+    const STATUS_REJECTED = 'rechazado';
+
+    public static function getAvailableStatuses(): array
+    {
+        return [
+            self::STATUS_PENDING,
+            self::STATUS_ACTIVE,
+            self::STATUS_INACTIVE,
+            self::STATUS_REJECTED,
+        ];
+    }
 
     protected $casts = [
         'dob' => 'date',
@@ -66,6 +82,7 @@ class ApplicationForm extends Model
         'person3_wages' => 'decimal:2',
         'person4_wages' => 'decimal:2',
         'poliza_amount' => 'decimal:2',
+        'reviewed_at' => 'datetime',
     ];
 
     // Relationships
@@ -79,12 +96,33 @@ class ApplicationForm extends Model
         return $this->belongsTo(User::class, 'agent_id');
     }
 
+    public function reviewedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
     public function documents(): HasMany
     {
         return $this->hasMany(ApplicationDocument::class, 'application_form_id');
     }
 
     // Helper methods
+    public function isPending(): bool
+    {
+        return $this->status === self::STATUS_PENDING;
+    }
+
+    public function isActive(): bool
+    {
+        return $this->status === self::STATUS_ACTIVE;
+    }
+
+    public function canChangeStatus(User $user): bool
+    {
+        // Solo admin puede cambiar el status
+        return $user->isAdmin();
+    }
+
     public function isEditableBy(User $user): bool
     {
         // Admin puede editar todo

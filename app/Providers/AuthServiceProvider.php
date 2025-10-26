@@ -28,13 +28,9 @@ class AuthServiceProvider extends ServiceProvider
     {
         $this->registerPolicies();
 
-        // Definir gates adicionales si es necesario
+        // Definir gates para permisos generales
         Gate::define('manage-users', function (User $user) {
             return $user->isAdmin() || $user->isAgent();
-        });
-
-        Gate::define('manage-clients-only', function (User $user) {
-            return $user->isAgent();
         });
 
         Gate::define('manage-all-users', function (User $user) {

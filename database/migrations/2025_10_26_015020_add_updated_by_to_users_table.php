@@ -12,9 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->unsignedBigInteger('created_by')->nullable()->after('type');
-            $table->foreign('created_by')->references('id')->on('users')->onDelete('set null');
-            $table->index('created_by', 'users_created_by_index');
+            $table->foreignId('updated_by')->nullable()->after('created_by')->constrained('users')->nullOnDelete();
+            $table->index('updated_by', 'users_updated_by_index');
         });
     }
 
@@ -24,9 +23,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropForeign(['created_by']);
-            $table->dropIndex('users_created_by_index');
-            $table->dropColumn('created_by');
+            $table->dropForeign(['updated_by']);
+            $table->dropIndex('users_updated_by_index');
+            $table->dropColumn('updated_by');
         });
     }
 };

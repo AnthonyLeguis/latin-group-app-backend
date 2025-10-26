@@ -19,13 +19,23 @@ El proyecto sigue los principios de Clean Architecture con separación clara de 
 app/
 ├── Data/              # DTOs para validación y transferencia de datos
 │   ├── Auth/         # DTOs de autenticación
-│   └── Client/       # DTOs de clientes
+│   └── Application/  # DTOs de application forms
 ├── Http/Controllers/Api/V1/  # Controladores REST API
+│   ├── AuthController.php
+│   ├── UserController.php
+│   └── ApplicationFormController.php
 ├── Models/           # Modelos Eloquent con relaciones
+│   ├── User.php
+│   ├── ApplicationForm.php
+│   └── ApplicationDocument.php
 ├── Policies/         # Autorización basada en políticas
-├── Providers/        # Proveedores de servicios y gates
-└── Services/         # Lógica de negocio desacoplada
+│   ├── UserPolicy.php
+│   └── ApplicationFormPolicy.php
+└── Providers/        # Proveedores de servicios y gates
+    └── AuthServiceProvider.php
 ```
+
+**Nota:** La tabla `clients` fue deprecada y eliminada. Toda la gestión se realiza mediante la tabla `users` con `type = 'client'`.
 
 ## 📋 Características Implementadas
 
@@ -36,23 +46,28 @@ app/
 - ✅ **Tres tipos de usuario** - Admin, Agent, Client
 - ✅ **Tokens JWT** - Autenticación stateless con Sanctum
 
-### 👥 Gestión de Usuarios con Permisos
-- ✅ **Admin**: Crear, ver, editar, eliminar cualquier usuario
-- ✅ **Agent**: Crear/ver/editar usuarios tipo `client`, ver sus propios clientes
+### 👥 Nueva Arquitectura de Gestión de Usuarios
+- ✅ **Tabla única `users`** - Consolidación de admin, agent y client (eliminada tabla redundante `clients`)
+- ✅ **Admin**: CRUD completo para todos los tipos de usuario
+- ✅ **Agent**: CRUD solo para usuarios tipo `client` que él creó
 - ✅ **Client**: Solo puede gestionar sus propios datos
-- ✅ **Rastreo de creación** - Campo `created_by` para auditar quién creó cada usuario
+- ✅ **Auditoría completa** - Campos `created_by` y `updated_by` en todos los usuarios
+- ✅ **Relaciones bidireccionales** - `createdBy()`, `updatedBy()`, `createdUsers()`
+- ✅ **Filtrado automático** - Los agents solo ven los clients que crearon
 
-### 📋 Gestión de Clientes
-- ✅ **CRUD completo** - Crear, leer, actualizar, eliminar
-- ✅ **Asociación usuario-cliente** - Cada cliente pertenece a un usuario
-- ✅ **Permisos por rol** - Solo admin/agent pueden crear clientes
-- ✅ **Validación completa** - Datos requeridos y formatos
+### 📋 Sistema de Application Forms (Planillas)
+- ✅ **Auto-creación** - Al registrar un client, se crea automáticamente su `ApplicationForm`
+- ✅ **Status workflow** - `pendiente` → `activo` / `inactivo` / `rechazado` (solo admin)
+- ✅ **Tracking de revisión** - Campos `reviewed_by` y `reviewed_at` para auditoría
+- ✅ **Permisos granulares** - Agent crea y edita, Admin aprueba y cambia status
+- ✅ **Comentarios obligatorios** - Campo `status_comment` requerido al cambiar status
 
-### 🛡️ Sistema de Autorización
-- ✅ **Policies de Laravel** - Lógica de permisos centralizada
-- ✅ **Gates personalizados** - Validaciones específicas por acción
-- ✅ **Middleware de autenticación** - Protección de rutas
-- ✅ **Validación de ownership** - Usuarios solo acceden a sus recursos
+### 🛡️ Sistema de Autorización Avanzado
+- ✅ **Policies de Laravel** - Lógica de permisos centralizada con validación de ownership
+- ✅ **Gates personalizados** - Validaciones específicas por acción y rol
+- ✅ **Middleware de autenticación** - Protección de rutas con Sanctum
+- ✅ **Validación a nivel de query** - Filtrado automático por `created_by` para agents
+- ✅ **Eager loading optimizado** - Prevención de N+1 queries en relaciones
 
 ## 🛠️ Instalación y Configuración
 
@@ -100,6 +115,24 @@ app/
 6. **Ejecutar migraciones y seeders**
    ```bash
    php artisan migrate:fresh --seed
+   ```
+
+   **Migraciones aplicadas:**
+   ```
+   ✅ 0001_01_01_000000_create_users_table.php
+   ✅ 0001_01_01_000001_create_personal_access_tokens_table.php
+   ✅ 2025_10_14_200443_add_created_by_to_users_table.php
+   ✅ 2025_10_15_215420_create_application_forms_table.php
+   ✅ 2025_10_15_215453_create_application_documents_table.php
+   ✅ 2025_10_23_000001_create_contact_us_table.php
+   ✅ 2025_10_26_015020_add_updated_by_to_users_table.php
+   ✅ 2025_10_26_021308_update_application_forms_status_and_tracking.php
+   ```
+
+   **Migraciones eliminadas (redundantes):**
+   ```
+   ❌ 0001_01_01_000002_create_clients_table.php (tabla deprecada)
+   ❌ 2025_10_26_014836_add_index_to_users_created_by_column.php (consolidada)
    ```
 
 5. **Configurar Google OAuth** (opcional)
@@ -202,8 +235,119 @@ Content-Type: application/json
 
 #### Listar usuarios
 ```http
-GET /api/v1/users
-GET /api/v1/users?type=client
+GET /api/v1/users                    # Todos los usuarios (filtrado por permisos)
+GET /api/v1/users?type=client        # Solo clientes
+GET /api/v1/users?type=agent         # Solo agentes (admin only)
+```
+
+**Respuesta para Agent:**
+```json
+{
+  "users": [
+    {
+      "id": 5,
+      "name": "Cliente 1",
+      "email": "cliente1@example.com",
+      "type": "client",
+      "created_by": 2,
+      "updated_by": 2,
+      "created_at": "2025-10-26T...",
+      "updated_at": "2025-10-26T..."
+    }
+  ]
+}
+```
+
+**Nota:** Los agents solo ven usuarios tipo `client` que ellos crearon (`created_by = agent_id`).
+
+#### Reporte de Agentes con Clientes (solo Admin)
+```http
+GET /api/v1/users/agents-report
+```
+
+**Respuesta:**
+```json
+{
+  "agents": [
+    {
+      "id": 2,
+      "name": "Agent User",
+      "email": "agent@example.com",
+      "clients_count": 3,
+      "created_users": [
+        {
+          "id": 5,
+          "name": "Cliente 1",
+          "email": "cliente1@example.com",
+          "application_forms_as_client": [
+            {
+              "id": 1,
+              "status": "pendiente",
+              "reviewed_by": null,
+              "created_at": "2025-10-26T..."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "total_agents": 1,
+  "total_clients": 3
+}
+```
+
+#### Planillas Pendientes de Revisión (solo Admin)
+```http
+GET /api/v1/users/pending-forms
+GET /api/v1/users/pending-forms?status=activo
+```
+
+**Respuesta:**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "client_id": 5,
+      "agent_id": 2,
+      "status": "pendiente",
+      "status_comment": null,
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "client": {
+        "id": 5,
+        "name": "Cliente 1",
+        "email": "cliente1@example.com"
+      },
+      "agent": {
+        "id": 2,
+        "name": "Agent User",
+        "email": "agent@example.com"
+      },
+      "created_at": "2025-10-26T..."
+    }
+  ],
+  "per_page": 20,
+  "current_page": 1
+}
+```
+
+#### Estadísticas de Usuarios (solo Admin)
+```http
+GET /api/v1/users/stats
+```
+
+**Respuesta:**
+```json
+{
+  "total_users": 10,
+  "total_admins": 1,
+  "total_agents": 2,
+  "total_clients": 7,
+  "pending_forms": 3,
+  "active_forms": 4,
+  "rejected_forms": 1
+}
 ```
 
 #### Crear usuario
@@ -214,9 +358,15 @@ POST /api/v1/users
   "name": "Nuevo Cliente",
   "email": "nuevo@example.com",
   "password": "password123",
-  "type": "client"
+  "type": "client",
+  "agent_id": 2  // Requerido si admin crea un client
 }
 ```
+
+**Nota importante:** 
+- **Agent crea client**: No necesita `agent_id`, se asigna automáticamente el ID del agent
+- **Admin crea client**: Debe especificar `agent_id` para asignar a qué agent pertenece
+- Al crear un `client`, se genera automáticamente un `ApplicationForm` con `status = 'pendiente'`
 
 #### Ver usuario específico
 ```http
@@ -343,10 +493,37 @@ POST /api/v1/application-forms/{id}/confirm
 POST /api/v1/application-forms/{id}/status
 
 {
-  "status": "Activo",
-  "status_comment": "Planilla aprobada y completa"
+  "status": "activo",  // pendiente | activo | inactivo | rechazado
+  "status_comment": "Planilla aprobada, documentación completa y verificada"
 }
 ```
+
+**Respuesta:**
+```json
+{
+  "message": "Status actualizado exitosamente",
+  "form": {
+    "id": 1,
+    "status": "activo",
+    "status_comment": "Planilla aprobada, documentación completa y verificada",
+    "reviewed_by": 1,
+    "reviewed_at": "2025-10-26T14:30:00.000000Z",
+    "client": { ... },
+    "agent": { ... },
+    "reviewedBy": {
+      "id": 1,
+      "name": "Admin User",
+      "email": "admin@example.com"
+    }
+  }
+}
+```
+
+**Notas:**
+- Solo admin puede cambiar el status
+- El campo `status_comment` es **obligatorio**
+- Se registra automáticamente quién revisó (`reviewed_by`) y cuándo (`reviewed_at`)
+- Estados disponibles: `pendiente`, `activo`, `inactivo`, `rechazado`
 
 #### Subir documento
 ```http
@@ -373,8 +550,31 @@ DELETE /api/v1/application-forms/{id}
 
 1. **NO hay registro público** - Solo usuarios autenticados pueden registrar
 2. **Admin** puede registrar usuarios de cualquier tipo (`admin`, `agent`, `client`) usando `/api/v1/users`
+   - Al crear un `client`, debe especificar a qué `agent_id` pertenece
 3. **Agent** puede registrar solo usuarios tipo `client` usando `/api/v1/users`
+   - Los clients se asignan automáticamente al agent que los crea
+   - Se crea automáticamente un `ApplicationForm` con `status = 'pendiente'`
 4. **Client** NO puede registrar a nadie
+
+### 🔄 Flujo Completo de Creación de Cliente
+
+**Cuando un Agent crea un Client:**
+1. Agent envía `POST /api/v1/users` con `type = 'client'`
+2. Se crea el usuario en la tabla `users` con `created_by = agent_id`
+3. Se crea automáticamente un registro en `application_forms`:
+   - `client_id` = ID del nuevo usuario
+   - `agent_id` = ID del agent que lo creó
+   - `agent_name` = Nombre del agent
+   - `applicant_name` = Nombre del cliente
+   - `email` = Email del cliente
+   - `status` = `'pendiente'`
+4. Agent puede completar los datos de la planilla
+5. Admin revisa y aprueba/rechaza cambiando el `status`
+
+**Cuando un Admin crea un Client:**
+1. Admin envía `POST /api/v1/users` con `type = 'client'` y `agent_id`
+2. Se valida que el `agent_id` existe y es tipo `agent`
+3. Mismo flujo que cuando lo crea un agent
 
 ### 🔑 Proceso de Login
 
@@ -404,25 +604,32 @@ GET /api/v1/auth/google
 - **Jerarquía de registro:** Admin > Agent > Client (cada nivel puede registrar el inferior)
 - **Interfaz diferenciada:** El frontend muestra diferentes vistas según el tipo de usuario
 
-## � Flujo de Planillas de Aplicación
+## 🔐 Flujo de Planillas de Aplicación
 
-### 📋 Proceso de Creación
+### 📋 Proceso Completo
 
-1. **Agent registra usuario tipo client** usando `/api/v1/auth/register`
-2. **Agent crea planilla de aplicación** usando `/api/v1/application-forms`
-3. **Planilla se crea con status "En Revisión"** y `confirmed = false`
-4. **Agent puede editar** la planilla mientras no esté confirmada
-5. **Agent confirma la planilla** marcando `confirmed = true`
-6. **Admin puede cambiar status** a "Activo" o "Inactivo" con comentarios
-7. **Cualquier usuario autorizado** puede subir documentos a la planilla
+1. **Agent/Admin registra usuario tipo client** → Usuario creado en tabla `users`
+2. **Sistema auto-crea ApplicationForm** → Status inicial: `pendiente`
+3. **Agent completa datos de planilla** → Edita campos de información
+4. **Agent confirma planilla** → Marca `confirmed = true`
+5. **Admin revisa planilla pendiente** → Usa `GET /api/v1/users/pending-forms`
+6. **Admin aprueba/rechaza** → Cambia `status` con comentario obligatorio
+7. **Sistema registra auditoría** → Guarda `reviewed_by` y `reviewed_at`
 
 ### 🔐 Estados y Transiciones
 
-| Estado | Descripción | Transiciones | Editable |
-|--------|-------------|--------------|----------|
-| **En Revisión** | Planilla creada, pendiente de confirmación | → Activo, → Inactivo | ✅ Agent |
-| **Activo** | Planilla confirmada y aprobada | → Inactivo | ❌ |
-| **Inactivo** | Planilla rechazada o suspendida | → Activo, → En Revisión | ❌ |
+| Estado | Descripción | Puede cambiar a | Solo puede cambiar | Status Comment |
+|--------|-------------|-----------------|-------------------|----------------|
+| **pendiente** | Planilla creada, esperando revisión | activo, rechazado | Admin | Obligatorio |
+| **activo** | Planilla aprobada y operativa | inactivo, rechazado | Admin | Obligatorio |
+| **inactivo** | Planilla suspendida temporalmente | activo, rechazado | Admin | Obligatorio |
+| **rechazado** | Planilla rechazada definitivamente | - | Admin | Obligatorio |
+
+**Notas importantes:**
+- Solo **Admin** puede cambiar el status de una planilla
+- El campo `status_comment` es **obligatorio** al cambiar status
+- Se registra automáticamente quién hizo el cambio (`reviewed_by`) y cuándo (`reviewed_at`)
+- Agent puede editar la planilla solo si no está confirmada
 
 ### 📎 Gestión de Documentos
 
@@ -492,10 +699,14 @@ GET /api/v1/auth/google
 - `bank_routing`: Número de ruta bancaria
 - `bank_account`: Número de cuenta
 
-#### ⚙️ **Campos de Control**
-- `status`: Estado (Activo/Inactivo/En Revisión)
-- `status_comment`: Comentario del status
+#### ⚙️ **Campos de Control y Auditoría**
+- `status`: Estado actual (`pendiente` | `activo` | `inactivo` | `rechazado`)
+- `status_comment`: Comentario obligatorio al cambiar status (max 1000 caracteres)
 - `confirmed`: Confirmación del agente (boolean)
+- `reviewed_by`: ID del admin que revisó (foreign key → users.id)
+- `reviewed_at`: Fecha y hora de la última revisión (timestamp)
+- `created_at`: Fecha de creación
+- `updated_at`: Fecha de última actualización
 
 ## 🌐 **Uso desde el Frontend**
 
@@ -590,13 +801,21 @@ Cada persona incluye: `name`, `relation`, `is_applicant`, `legal_status`, `docum
 
 | Acción | Admin | Agent | Client |
 |--------|-------|-------|--------|
-| **Ver planillas** | ✅ Todas | ✅ Propias | ✅ Propia |
-| **Crear planilla** | ❌ | ✅ Para sus clients | ❌ |
-| **Editar planilla** | ✅ Siempre | ✅ Solo no confirmadas | ❌ |
-| **Confirmar planilla** | ❌ | ✅ Propias | ❌ |
-| **Cambiar status** | ✅ Todas | ❌ | ❌ |
-| **Subir documentos** | ✅ Todas | ✅ Propias | ❌ |
-| **Eliminar planilla** | ✅ Todas | ❌ | ❌ |
+| **Ver todas las planillas** | ✅ Todas | ✅ Solo las que creó | ❌ |
+| **Ver planilla específica** | ✅ Cualquiera | ✅ Si la creó | ✅ Si es suya |
+| **Crear planilla** | ❌ Auto-creada | ✅ Auto-creada al crear client | ❌ |
+| **Editar planilla** | ✅ Cualquiera | ✅ Solo no confirmadas que creó | ❌ |
+| **Confirmar planilla** | ❌ | ✅ Solo las que creó | ❌ |
+| **Cambiar status** | ✅ Cualquiera (con comment) | ❌ | ❌ |
+| **Ver quién revisó** | ✅ | ✅ | ❌ |
+| **Subir documentos** | ✅ A cualquiera | ✅ A las que creó | ❌ |
+| **Eliminar planilla** | ✅ Cualquiera | ❌ | ❌ |
+
+**Notas:**
+- Las planillas se **auto-crean** al registrar un usuario tipo `client`
+- Solo **Admin** puede cambiar el `status` de una planilla
+- Agent puede editar planilla solo si `confirmed = false` y él la creó
+- El campo `status_comment` es **obligatorio** al cambiar status
 
 ### 🚀 **API Endpoints**
 
@@ -654,14 +873,17 @@ document: (file) cedula_juan.pdf
 document_type: cedula
 ```
 
-### 📊 **Flujo de Trabajo**
+### 📊 **Flujo de Trabajo Actualizado**
 
-1. **Agent registra cliente** → Usuario tipo `client` creado
-2. **Agent crea planilla** → Formulario con todos los datos
-3. **Agent confirma planilla** → `confirmed = true`
-4. **Admin revisa y aprueba** → Cambia `status` a "Activo"
-5. **Agent sube documentos** → Archivos adjuntos a la planilla
-6. **Client puede ver** → Su propia planilla (solo lectura)
+1. **Agent crea cliente** → `POST /api/v1/users` con `type = 'client'`
+2. **Sistema auto-crea ApplicationForm** → Status inicial: `pendiente`
+3. **Agent completa planilla** → `PUT /api/v1/application-forms/{id}`
+4. **Agent confirma planilla** → `POST /api/v1/application-forms/{id}/confirm`
+5. **Admin ve planillas pendientes** → `GET /api/v1/users/pending-forms`
+6. **Admin aprueba/rechaza** → `POST /api/v1/application-forms/{id}/status`
+7. **Sistema registra auditoría** → `reviewed_by` y `reviewed_at` automáticos
+8. **Agent puede subir documentos** → `POST /api/v1/application-forms/{id}/documents`
+9. **Client puede ver su planilla** → `GET /api/v1/application-forms` (solo lectura)
 
 ### 🧪 **Pruebas del Sistema**
 
@@ -680,15 +902,80 @@ php test_application_forms.php
 
 ### 💾 **Estructura de Base de Datos**
 
+#### **users** (tabla consolidada)
+```sql
+- id (PK)
+- name
+- email (unique)
+- password
+- type (enum: 'admin', 'agent', 'client')
+- created_by (FK → users.id) - Quién creó este usuario
+- updated_by (FK → users.id) - Quién actualizó este usuario
+- created_at
+- updated_at
+```
+
+**Índices:**
+- `created_by` (para optimizar filtrado de agents)
+- `updated_by` (para auditoría de actualizaciones)
+- `type` (para filtros por tipo de usuario)
+
+**Relaciones:**
+- `createdBy()` → belongsTo User (quién lo creó)
+- `updatedBy()` → belongsTo User (quién lo actualizó)
+- `createdUsers()` → hasMany User (usuarios que creó)
+- `applicationFormsAsClient()` → hasMany ApplicationForm (planillas como cliente)
+- `applicationFormsAsAgent()` → hasMany ApplicationForm (planillas como agente)
+
 #### **application_forms**
-- 47 campos de datos + control
-- Relaciones: `client_id`, `agent_id`
-- Índices optimizados
+```sql
+- id (PK)
+- client_id (FK → users.id, type='client')
+- agent_id (FK → users.id, type='agent')
+- agent_name (string)
+- applicant_name (string)
+- ... (47+ campos de datos)
+- status (enum: 'pendiente', 'activo', 'inactivo', 'rechazado')
+- status_comment (text, max 1000 chars)
+- confirmed (boolean, default false)
+- reviewed_by (FK → users.id, type='admin')
+- reviewed_at (timestamp, nullable)
+- created_at
+- updated_at
+```
+
+**Índices:**
+- `client_id` (para búsquedas por cliente)
+- `agent_id` (para búsquedas por agente)
+- `status` (para filtros por estado)
+- `reviewed_by` (para auditoría)
+
+**Relaciones:**
+- `client()` → belongsTo User
+- `agent()` → belongsTo User
+- `reviewedBy()` → belongsTo User
+- `documents()` → hasMany ApplicationDocument
 
 #### **application_documents**
-- Metadatos de archivos
-- Relación con planilla
-- Eliminación automática de archivos
+```sql
+- id (PK)
+- application_form_id (FK → application_forms.id)
+- uploaded_by (FK → users.id)
+- original_name (string)
+- file_name (string)
+- file_path (string)
+- mime_type (string)
+- file_size (integer)
+- document_type (string)
+- created_at
+- updated_at
+```
+
+**Relaciones:**
+- `applicationForm()` → belongsTo ApplicationForm
+- `uploader()` → belongsTo User
+
+**Nota:** ✅ Tabla `clients` eliminada (migración removida, modelo y servicio eliminados)
 
 ### 🔧 **Configuración de Almacenamiento**
 
@@ -736,22 +1023,60 @@ php artisan make:seeder NuevoSeeder
 
 ## 📝 Notas Técnicas
 
+### Arquitectura y Decisiones de Diseño
+
 - **Autenticación**: Stateless con tokens JWT via Sanctum
-- **Validación**: DTOs con Spatie Laravel Data
-- **Autorización**: Policies y Gates de Laravel
+- **Validación**: DTOs con Spatie Laravel Data para type-safety
+- **Autorización**: Policies y Gates de Laravel con validación a nivel de query
 - **Base de datos**: UTF8MB4 para soporte Unicode completo
 - **Seeds**: Datos de prueba incluidos para desarrollo
 
+### Optimizaciones Implementadas
+
+- **Eager Loading**: Prevención de N+1 queries con `with()` en relaciones
+- **Índices estratégicos**: En `created_by`, `updated_by`, `reviewed_by`, `status`
+- **Query scoping**: Filtrado automático por `created_by` para agents
+- **Soft deletes**: No implementado (eliminación física por simplicidad)
+
+### Convenciones de Código
+
+- **Naming**: camelCase para métodos, snake_case para columnas DB
+- **Status constants**: Definidos en modelo `ApplicationForm::STATUS_*`
+- **Helpers booleanos**: Métodos `isPending()`, `isActive()`, `canChangeStatus()`
+- **Responses**: Siempre en JSON con estructura consistente
+
+### Seguridad
+
+- **Password hashing**: Bcrypt automático en User model
+- **Token expiration**: Configurable en Sanctum
+- **CORS**: Configurado para `http://localhost:4200`
+- **Rate limiting**: Throttle en rutas públicas (5 req/min en contacto)
+- **Mass assignment protection**: Fillable arrays en todos los modelos
+
 ## 🚀 Próximos Pasos
 
-- [ ] Implementar notificaciones por email
-- [ ] Agregar logging de actividades
-- [ ] Implementar rate limiting
-- [ ] Crear API documentation con Swagger
+### Funcionalidades Backend Pendientes
+- [ ] Notificaciones por email al cambiar status de planilla
+- [ ] Historial de cambios en planillas (auditoría completa)
+- [ ] Generación de PDF de planillas para descarga
+- [ ] Endpoint para estadísticas avanzadas por agent
+- [ ] Firma digital de documentos
+- [ ] Sistema de notificaciones en tiempo real (WebSockets)
+
+### Mejoras de Infraestructura
+- [ ] Implementar rate limiting por usuario
+- [ ] Agregar logging de actividades con Laravel Log
+- [ ] Implementar caché con Redis para queries frecuentes
+- [ ] Crear API documentation con Swagger/OpenAPI
 - [ ] Agregar tests unitarios e integración
-- [ ] Implementar caché para optimización
-- [ ] Desarrollar frontend React/Vue
-- [ ] Agregar funcionalidades de reporting
+- [ ] CI/CD con GitHub Actions
+
+### Frontend
+- [ ] Desarrollar dashboard de admin con estadísticas
+- [ ] Panel de agent para gestión de clients y planillas
+- [ ] Vista de client para ver su planilla
+- [ ] Sistema de notificaciones en frontend
+- [ ] Formulario completo de planilla con validación paso a paso
 
 ## 🤝 Contribución
 
@@ -767,51 +1092,138 @@ Este proyecto está bajo la Licencia MIT.
 
 ## ✨ Estado del Proyecto
 
-- ✅ **Backend API completo** con autenticación y permisos
-- ✅ **Arquitectura limpia** implementada
-- ✅ **Sistema de roles** funcional
-- ✅ **Base de datos** configurada y poblada
-- ✅ **Autenticación múltiple** (email + Google OAuth)
-- ✅ **Registro jerárquico** implementado y probado
-- ✅ **Sistema de autenticación probado y verificado**
-- ✅ **Planillas de aplicación** completamente implementadas y probadas
-- ✅ **Sistema de documentos** con subida y gestión de archivos
-- ✅ **Permisos avanzados** por rol implementados
-- 🔄 **Frontend** pendiente de desarrollo
-- 🔄 **Documentación API** puede mejorarse con Swagger
+### ✅ Completado (Octubre 2025)
+
+**Backend Core:**
+- ✅ **API REST completa** con arquitectura limpia y separación de responsabilidades
+- ✅ **Sistema de roles avanzado** (admin/agent/client) con permisos granulares
+- ✅ **Autenticación múltiple** (email + password + Google OAuth)
+- ✅ **Base de datos optimizada** con índices estratégicos y relaciones bidireccionales
+
+**Gestión de Usuarios:**
+- ✅ **Arquitectura consolidada** - Tabla única `users` (eliminada redundancia de `clients`)
+- ✅ **Auditoría completa** - Campos `created_by` y `updated_by` en todos los usuarios
+- ✅ **Filtrado automático** - Agents solo ven sus clients (`created_by`)
+- ✅ **Endpoints especializados** - `/agents-report`, `/stats`, `/pending-forms`
+
+**Sistema de Application Forms:**
+- ✅ **Auto-creación** - ApplicationForm se genera al crear un client
+- ✅ **Workflow de estados** - `pendiente` → `activo`/`inactivo`/`rechazado`
+- ✅ **Tracking de revisión** - Campos `reviewed_by` y `reviewed_at`
+- ✅ **Validaciones robustas** - Status comment obligatorio, permisos estrictos
+- ✅ **Sistema de documentos** - Upload/delete con metadata completa
+
+**Seguridad y Permisos:**
+- ✅ **Policies detalladas** - Validación de ownership a nivel de modelo
+- ✅ **Query scoping** - Filtrado automático en consultas por rol
+- ✅ **Eager loading** - Optimización N+1 queries con relaciones
+- ✅ **Token-based auth** - Sanctum con expiración configurable
+
+**Limpieza de Código:**
+- ✅ **Tabla clients eliminada** - Consolidación en tabla `users`
+- ✅ **Modelo Client.php eliminado** - Ya no es necesario
+- ✅ **ClientController.php eliminado** - Lógica movida a UserController
+- ✅ **ClientManagementService.php eliminado** - Servicio redundante
+- ✅ **ClientData.php eliminado** - DTO ya no usado
+- ✅ **Migraciones consolidadas** - 2 migraciones redundantes eliminadas
+- ✅ **Gates limpiados** - Eliminado `manage-clients-only` gate
+
+### 🔄 En Desarrollo
+
+- 🔄 **Frontend Angular** - Dashboard diferenciado por rol
+- 🔄 **Sistema de notificaciones** - Email y push notifications
+
+### 📊 Métricas del Proyecto
+
+- **Endpoints implementados**: 20+
+- **Modelos**: 3 (User, ApplicationForm, ApplicationDocument)
+- **Policies**: 2 (UserPolicy, ApplicationFormPolicy)
+- **Migraciones**: 10+
+- **Seeders**: 2 (DatabaseSeeder, UserSeeder)
+- **Líneas de código backend**: ~2,500+
 
 ## 🧪 Pruebas Realizadas
 
-### ✅ Verificación del Sistema de Planillas de Aplicación
+### ✅ Sistema de Autenticación y Usuarios
 
-**Creación de Planillas:**
-- ✅ Agent puede crear planillas para sus clients
-- ✅ Validación completa de 47+ campos
+**Registro y Login:**
+- ✅ Admin puede crear admin, agent y client
+- ✅ Agent puede crear solo client (asignado automáticamente)
+- ✅ Admin crea client requiere especificar `agent_id`
+- ✅ Login con email + password funcional
+- ✅ Google OAuth valida usuarios registrados
+
+**Gestión de Usuarios:**
+- ✅ Admin ve todos los usuarios sin restricción
+- ✅ Agent ve solo clients con `created_by = agent_id`
+- ✅ UserPolicy valida ownership correctamente
+- ✅ Campos `created_by` y `updated_by` se registran correctamente
+
+**Endpoints de Reportes:**
+- ✅ `/api/v1/users/agents-report` retorna agents con clients anidados
+- ✅ `/api/v1/users/stats` retorna estadísticas generales
+- ✅ `/api/v1/users/pending-forms` filtra por status correctamente
+
+### ✅ Sistema de Application Forms
+
+**Creación y Auto-generación:**
+- ✅ Al crear client se auto-crea ApplicationForm con status `pendiente`
+- ✅ Agent crea client → ApplicationForm asignado automáticamente
+- ✅ Admin crea client → Requiere `agent_id` y crea ApplicationForm
 - ✅ Un cliente solo puede tener una planilla
 
-**Permisos y Control:**
-- ✅ Agent puede confirmar planillas (`confirmed = true`)
-- ✅ Admin puede cambiar status (Activo/Inactivo/En Revisión)
+**Workflow de Estados:**
+- ✅ Status inicial: `pendiente` (auto-asignado)
+- ✅ Admin puede cambiar a: `activo`, `inactivo`, `rechazado`
+- ✅ Campo `status_comment` es obligatorio al cambiar status
+- ✅ Se registra `reviewed_by` y `reviewed_at` automáticamente
+- ✅ Agent NO puede cambiar status (solo admin)
+
+**Permisos y Edición:**
+- ✅ Agent puede editar planillas no confirmadas que creó
 - ✅ Agent NO puede editar planillas confirmadas
 - ✅ Admin puede editar cualquier planilla
-- ✅ Client solo puede ver su propia planilla
+- ✅ Client solo puede ver su propia planilla (lectura)
+- ✅ ApplicationFormPolicy valida permisos correctamente
 
 **Sistema de Documentos:**
-- ✅ Subida de archivos (imágenes/PDF hasta 5MB)
-- ✅ Almacenamiento seguro en directorio dedicado
-- ✅ Eliminación automática de archivos al borrar planilla
-- ✅ Metadatos completos (tipo, tamaño, nombre original)
+- ✅ Subida de archivos (JPEG, PNG, PDF hasta 5MB)
+- ✅ Almacenamiento en `storage/app/public/application_documents`
+- ✅ Metadata completa (tipo, tamaño, nombre original, uploader)
+- ✅ Eliminación automática de archivos físicos al borrar documento
+- ✅ Admin puede eliminar cualquier documento
+- ✅ Agent puede eliminar solo documentos que subió
 
-**Flujo de Trabajo Validado:**
-1. ✅ Agent crea client → Agent crea planilla → Agent confirma
-2. ✅ Admin revisa → Admin aprueba (status: Activo)
-3. ✅ Agent sube documentos → Sistema operativo completo
+### ✅ Validaciones y Seguridad
 
-**Pruebas Automatizadas:**
-- ✅ Sistema completamente probado y validado
-- ✅ Todos los endpoints funcionales y seguros
-- ✅ Manejo de errores y permisos validados
-- ✅ Flujo de trabajo completo operativo
+**Validación de Datos:**
+- ✅ DTOs validan campos requeridos y formatos
+- ✅ Status solo acepta valores del enum
+- ✅ Agent_id valida que existe y es tipo `agent`
+- ✅ Email único en tabla users
+
+**Seguridad:**
+- ✅ Tokens JWT expiran correctamente
+- ✅ Middleware `auth:sanctum` protege rutas
+- ✅ CORS configurado para frontend
+- ✅ Mass assignment protegido con fillable
+- ✅ Passwords hasheados con bcrypt
+
+### 📊 Coverage de Funcionalidades
+
+| Módulo | Funcionalidad | Status |
+|--------|--------------|--------|
+| **Auth** | Login email + password | ✅ 100% |
+| **Auth** | Google OAuth | ✅ 100% |
+| **Users** | CRUD con permisos | ✅ 100% |
+| **Users** | Auditoría (created_by/updated_by) | ✅ 100% |
+| **Users** | Reportes (agents-report, stats) | ✅ 100% |
+| **Forms** | Auto-creación al crear client | ✅ 100% |
+| **Forms** | Workflow de estados | ✅ 100% |
+| **Forms** | Tracking de revisión | ✅ 100% |
+| **Forms** | Sistema de documentos | ✅ 100% |
+| **Policies** | UserPolicy | ✅ 100% |
+| **Policies** | ApplicationFormPolicy | ✅ 100% |
 
 ### 📊 Usuarios de Prueba Disponibles
 

@@ -186,32 +186,39 @@ class ApplicationFormController extends Controller
     }
 
     /**
-     * Update status of the application form.
+     * Update status of the application form (solo admin).
      */
     public function updateStatus(Request $request, ApplicationForm $form)
     {
         $user = $request->user();
 
-        // Only admin can update status
-        if ($user->type !== 'admin') {
+        // Solo admin puede cambiar status
+        if (!$user->isAdmin()) {
             return response()->json([
                 'error' => 'Solo el administrador puede cambiar el status'
             ], 403);
         }
 
         $request->validate([
-            'status' => 'required|in:Activo,Inactivo,En Revisión',
-            'status_comment' => 'nullable|string|max:1000'
+            'status' => 'required|in:' . implode(',', [
+                ApplicationForm::STATUS_PENDING,
+                ApplicationForm::STATUS_ACTIVE,
+                ApplicationForm::STATUS_INACTIVE,
+                ApplicationForm::STATUS_REJECTED
+            ]),
+            'status_comment' => 'required|string|max:1000'
         ]);
 
         $form->update([
             'status' => $request->status,
-            'status_comment' => $request->status_comment
+            'status_comment' => $request->status_comment,
+            'reviewed_by' => $user->id,
+            'reviewed_at' => now(),
         ]);
 
         return response()->json([
             'message' => 'Status actualizado exitosamente',
-            'form' => $form->fresh()
+            'form' => $form->fresh(['client', 'agent', 'reviewedBy'])
         ]);
     }
 

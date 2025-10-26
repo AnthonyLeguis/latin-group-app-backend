@@ -25,7 +25,8 @@ class UserPolicy
         }
 
         if ($user->isAgent()) {
-            return $model->isClient(); // Agent solo puede ver clients
+            // Agent solo puede ver clients que él creó
+            return $model->isClient() && $model->created_by === $user->id;
         }
 
         return false;
@@ -65,7 +66,8 @@ class UserPolicy
         }
 
         if ($user->isAgent()) {
-            return $model->isClient(); // Agent solo puede modificar clients
+            // Agent solo puede modificar clients que él creó
+            return $model->isClient() && $model->created_by === $user->id;
         }
 
         return false;
