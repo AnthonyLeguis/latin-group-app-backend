@@ -30,10 +30,16 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::apiResource('users', UserController::class)->except(['edit', 'create']);
 
     // Gestión de planillas de aplicación
-    Route::apiResource('application-forms', ApplicationFormController::class);
+    // IMPORTANTE: Rutas específicas ANTES del apiResource para evitar conflictos
+    Route::get('application-forms/clients-with-forms', [ApplicationFormController::class, 'getClientsWithForms']);
     Route::post('application-forms/{form}/confirm', [ApplicationFormController::class, 'confirm']);
     Route::post('application-forms/{form}/status', [ApplicationFormController::class, 'updateStatus']);
+    Route::post('application-forms/{form}/approve-changes', [ApplicationFormController::class, 'approvePendingChanges']);
+    Route::post('application-forms/{form}/reject-changes', [ApplicationFormController::class, 'rejectPendingChanges']);
     Route::post('application-forms/{form}/documents', [ApplicationFormController::class, 'uploadDocument']);
     Route::delete('application-forms/{form}/documents/{documentId}', [ApplicationFormController::class, 'deleteDocument']);
+    
+    // Rutas RESTful estándar
+    Route::apiResource('application-forms', ApplicationFormController::class);
 });
 

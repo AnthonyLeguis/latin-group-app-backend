@@ -44,7 +44,10 @@ class ApplicationForm extends Model
         'bank_name', 'bank_routing', 'bank_account',
 
         // Status and Confirmation
-        'status', 'status_comment', 'confirmed', 'reviewed_by', 'reviewed_at'
+        'status', 'status_comment', 'confirmed', 'reviewed_by', 'reviewed_at',
+        
+        // Pending Changes (for Active forms edited by agents)
+        'pending_changes', 'has_pending_changes', 'pending_changes_at', 'pending_changes_by'
     ];
 
     // Status constants
@@ -83,6 +86,9 @@ class ApplicationForm extends Model
         'person4_wages' => 'decimal:2',
         'poliza_amount' => 'decimal:2',
         'reviewed_at' => 'datetime',
+        'has_pending_changes' => 'boolean',
+        'pending_changes' => 'array', // JSON será convertido a array
+        'pending_changes_at' => 'datetime',
     ];
 
     // Relationships
@@ -99,6 +105,11 @@ class ApplicationForm extends Model
     public function reviewedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewed_by');
+    }
+    
+    public function pendingChangesBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'pending_changes_by');
     }
 
     public function documents(): HasMany
@@ -125,17 +136,29 @@ class ApplicationForm extends Model
 
     public function isEditableBy(User $user): bool
     {
-        // Admin puede editar todo
+        // Admin puede editar todo directamente
         if ($user->type === 'admin') {
             return true;
         }
 
-        // Agent solo puede editar si no está confirmado y es el creador
+        // Agent puede editar sus propias planillas
+        // Si está activa, los cambios quedarán pendientes de aprobación
         if ($user->type === 'agent' && $user->id === $this->agent_id) {
-            return !$this->confirmed;
+            return true;
         }
 
         return false;
+    }
+    
+    public function hasPendingChanges(): bool
+    {
+        return $this->has_pending_changes === true;
+    }
+    
+    public function needsAdminApproval(User $user): bool
+    {
+        // Si el agente edita una planilla activa, necesita aprobación del admin
+        return $user->type === 'agent' && $this->status === self::STATUS_ACTIVE;
     }
 
     public function canView(User $user): bool

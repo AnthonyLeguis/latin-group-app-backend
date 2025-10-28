@@ -19,6 +19,7 @@ class User extends Authenticatable
         'google_id',
         'avatar',
         'created_by',
+        'created_by_admin',
         'updated_by',
     ];
 
@@ -52,6 +53,11 @@ class User extends Authenticatable
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function createdByAdmin()
+    {
+        return $this->belongsTo(User::class, 'created_by_admin');
     }
 
     public function updatedBy()

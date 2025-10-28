@@ -40,12 +40,19 @@ class UserController extends Controller
         }
 
         // Siempre cargar quien creó al usuario
-        $query->with('createdBy');
+        $query->with(['createdBy', 'createdByAdmin']);
 
-        // Admin ve todos, agent solo clients que él creó
+        // Admin ve todos, agent solo clients que él creó o que están asignados a él
         if ($request->user()->isAgent()) {
             $query->where('type', 'client')
-                  ->where('created_by', $request->user()->id);
+                  ->where(function ($q) use ($request) {
+                      // Clientes que el agente creó directamente
+                      $q->where('created_by', $request->user()->id)
+                        // O clientes que tienen una application_form asignada a este agente
+                        ->orWhereHas('applicationFormsAsClient', function ($subQuery) use ($request) {
+                            $subQuery->where('agent_id', $request->user()->id);
+                        });
+                  });
         }
 
         // Ordenar por fecha de creación (más recientes primero)
@@ -89,12 +96,15 @@ class UserController extends Controller
         $agents = User::where('type', 'agent')
             ->with(['createdUsers' => function ($query) {
                 $query->where('type', 'client')
-                      ->with(['applicationFormsAsClient' => function ($q) {
-                          $q->with('reviewedBy')
-                            ->orderBy('created_at', 'desc');
-                      }])
+                      ->with([
+                          'applicationFormsAsClient' => function ($q) {
+                              $q->with(['reviewedBy', 'pendingChangesBy'])
+                                ->orderBy('created_at', 'desc');
+                          },
+                          'createdByAdmin' // Incluir quién fue el admin que creó el cliente
+                      ])
                       ->orderBy('created_at', 'desc')
-                      ->select('id', 'name', 'email', 'created_by', 'created_at', 'updated_at');
+                      ->select('id', 'name', 'email', 'created_by', 'created_by_admin', 'created_at', 'updated_at');
             }])
             ->withCount(['createdUsers as clients_count' => function ($query) {
                 $query->where('type', 'client');
@@ -102,10 +112,18 @@ class UserController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
+        // Obtener planillas con cambios pendientes de aprobación
+        $pendingChangesForms = \App\Models\ApplicationForm::where('has_pending_changes', true)
+            ->with(['client', 'agent', 'pendingChangesBy'])
+            ->orderBy('pending_changes_at', 'desc')
+            ->get();
+
         return response()->json([
             'agents' => $agents,
             'total_agents' => $agents->count(),
             'total_clients' => User::where('type', 'client')->count(),
+            'pending_changes_forms' => $pendingChangesForms,
+            'total_pending_changes' => $pendingChangesForms->count(),
         ]);
     }
 
@@ -158,7 +176,27 @@ class UserController extends Controller
         }
 
         try {
-            $result = $this->authService->register($data, $request->user()->id);
+            // Determinar quién debe ser el created_by y si hay un admin involucrado
+            $createdBy = $request->user()->id;
+            $createdByAdmin = null;
+            
+            // Si es un client y un admin lo está creando con un agent_id específico,
+            // el created_by debe ser el agent para que el cliente quede asociado al agent
+            // pero guardamos que fue un admin quien lo creó en created_by_admin
+            if ($data->type === 'client' && $request->user()->isAdmin()) {
+                $agentId = $request->input('agent_id');
+                if ($agentId) {
+                    $createdByAdmin = $request->user()->id; // Guardar que fue el admin
+                    $createdBy = $agentId; // El cliente queda asociado al agent
+                }
+            }
+            
+            $result = $this->authService->register($data, $createdBy);
+            
+            // Si hay un admin involucrado, actualizar el campo created_by_admin
+            if ($createdByAdmin) {
+                $result['user']->update(['created_by_admin' => $createdByAdmin]);
+            }
             
             // Si se creó un client, crear automáticamente su application_form
             if ($data->type === 'client') {

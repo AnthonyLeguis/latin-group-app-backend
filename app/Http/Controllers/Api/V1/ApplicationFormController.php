@@ -12,6 +12,15 @@ use Illuminate\Support\Facades\Storage;
 class ApplicationFormController extends Controller
 {
     /**
+     * Buscar el formulario por ID.
+     * Helper method para reemplazar el route model binding.
+     */
+    private function findForm(string $id): ApplicationForm
+    {
+        return ApplicationForm::findOrFail($id);
+    }
+
+    /**
      * Display a listing of application forms.
      */
     public function index(Request $request)
@@ -46,6 +55,23 @@ class ApplicationFormController extends Controller
     }
 
     /**
+     * Obtener IDs de clientes que ya tienen application forms.
+     * Útil para filtrar clientes disponibles al crear una nueva planilla.
+     * IMPORTANTE: Devuelve TODOS los client_ids con forms, sin filtrar por agente,
+     * porque un cliente solo puede tener UNA application form en total.
+     */
+    public function getClientsWithForms(Request $request)
+    {
+        // Obtener TODOS los client_id únicos que tienen application forms
+        // Sin importar el agente, porque un cliente solo puede tener una form
+        $clientIds = ApplicationForm::pluck('client_id')->unique()->values()->toArray();
+
+        return response()->json([
+            'client_ids' => $clientIds
+        ]);
+    }
+
+    /**
      * Store a newly created application form.
      */
     public function store(Request $request)
@@ -53,10 +79,10 @@ class ApplicationFormController extends Controller
         $user = $request->user();
         $data = ApplicationFormData::from($request->all());
 
-        // Only agents can create application forms
-        if ($user->type !== 'agent') {
+        // Only agents and admins can create application forms
+        if ($user->type !== 'agent' && $user->type !== 'admin') {
             return response()->json([
-                'error' => 'Solo los agentes pueden crear planillas de aplicación'
+                'error' => 'Solo los agentes y administradores pueden crear planillas de aplicación'
             ], 403);
         }
 
@@ -108,9 +134,10 @@ class ApplicationFormController extends Controller
     /**
      * Display the specified application form.
      */
-    public function show(Request $request, ApplicationForm $form)
+    public function show(Request $request, string $application_form)
     {
         $user = $request->user();
+        $form = $this->findForm($application_form);
 
         // Check permissions
         if (!$form->canView($user)) {
@@ -125,9 +152,10 @@ class ApplicationFormController extends Controller
     /**
      * Update the specified application form.
      */
-    public function update(Request $request, ApplicationForm $form)
+    public function update(Request $request, string $application_form)
     {
         $user = $request->user();
+        $form = $this->findForm($application_form);
 
         // Check permissions
         if (!$form->isEditableBy($user)) {
@@ -143,7 +171,26 @@ class ApplicationFormController extends Controller
                 return $value !== null;
             });
 
+            // Si es un agente editando una planilla activa
+            if ($form->needsAdminApproval($user)) {
+                // Guardar los cambios como pendientes
+                $form->update([
+                    'pending_changes' => $formData,
+                    'has_pending_changes' => true,
+                    'pending_changes_at' => now(),
+                    'pending_changes_by' => $user->id
+                ]);
+                
+                return response()->json([
+                    'message' => 'Cambios guardados. Pendientes de aprobación del administrador',
+                    'form' => $form->fresh(['client', 'agent', 'pendingChangesBy']),
+                    'requires_approval' => true
+                ]);
+            }
+            
+            // Si es admin o una planilla no activa, actualizar directamente
             $form->update($formData);
+            
             return response()->json([
                 'message' => 'Planilla actualizada exitosamente',
                 'form' => $form->fresh(['client', 'agent'])
@@ -159,9 +206,10 @@ class ApplicationFormController extends Controller
     /**
      * Confirm the application form.
      */
-    public function confirm(Request $request, ApplicationForm $form)
+    public function confirm(Request $request, string $application_form)
     {
         $user = $request->user();
+        $form = $this->findForm($application_form);
 
         // Only the agent who created it can confirm
         if ($user->type !== 'agent' || $user->id !== $form->agent_id) {
@@ -188,9 +236,10 @@ class ApplicationFormController extends Controller
     /**
      * Update status of the application form (solo admin).
      */
-    public function updateStatus(Request $request, ApplicationForm $form)
+    public function updateStatus(Request $request, string $application_form)
     {
         $user = $request->user();
+        $form = $this->findForm($application_form);
 
         // Solo admin puede cambiar status
         if (!$user->isAdmin()) {
@@ -221,13 +270,111 @@ class ApplicationFormController extends Controller
             'form' => $form->fresh(['client', 'agent', 'reviewedBy'])
         ]);
     }
+    
+    /**
+     * Approve pending changes (solo admin).
+     */
+    public function approvePendingChanges(Request $request, string $application_form)
+    {
+        $user = $request->user();
+        $form = $this->findForm($application_form);
+
+        // Solo admin puede aprobar cambios
+        if (!$user->isAdmin()) {
+            return response()->json([
+                'error' => 'Solo el administrador puede aprobar cambios'
+            ], 403);
+        }
+
+        if (!$form->hasPendingChanges()) {
+            return response()->json([
+                'error' => 'No hay cambios pendientes para aprobar'
+            ], 400);
+        }
+
+        try {
+            // Aplicar los cambios pendientes
+            $pendingChanges = $form->pending_changes;
+            $form->update($pendingChanges);
+            
+            // Limpiar los cambios pendientes
+            $form->update([
+                'pending_changes' => null,
+                'has_pending_changes' => false,
+                'pending_changes_at' => null,
+                'pending_changes_by' => null,
+                'reviewed_by' => $user->id,
+                'reviewed_at' => now()
+            ]);
+
+            return response()->json([
+                'message' => 'Cambios aprobados y aplicados exitosamente',
+                'form' => $form->fresh(['client', 'agent', 'reviewedBy'])
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Error al aprobar los cambios: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * Reject pending changes (solo admin).
+     */
+    public function rejectPendingChanges(Request $request, string $application_form)
+    {
+        $user = $request->user();
+        $form = $this->findForm($application_form);
+
+        // Solo admin puede rechazar cambios
+        if (!$user->isAdmin()) {
+            return response()->json([
+                'error' => 'Solo el administrador puede rechazar cambios'
+            ], 403);
+        }
+
+        if (!$form->hasPendingChanges()) {
+            return response()->json([
+                'error' => 'No hay cambios pendientes para rechazar'
+            ], 400);
+        }
+
+        $request->validate([
+            'rejection_reason' => 'required|string|max:500'
+        ]);
+
+        try {
+            // Limpiar los cambios pendientes sin aplicarlos
+            $form->update([
+                'pending_changes' => null,
+                'has_pending_changes' => false,
+                'pending_changes_at' => null,
+                'pending_changes_by' => null,
+                'status_comment' => 'Cambios rechazados: ' . $request->rejection_reason,
+                'reviewed_by' => $user->id,
+                'reviewed_at' => now()
+            ]);
+
+            return response()->json([
+                'message' => 'Cambios rechazados exitosamente',
+                'form' => $form->fresh(['client', 'agent', 'reviewedBy'])
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Error al rechazar los cambios: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
     /**
      * Upload document to application form.
      */
-    public function uploadDocument(Request $request, ApplicationForm $form)
+    public function uploadDocument(Request $request, string $application_form)
     {
         $user = $request->user();
+        $form = $this->findForm($application_form);
 
         // Check permissions
         if (!$form->canView($user)) {
@@ -272,9 +419,10 @@ class ApplicationFormController extends Controller
     /**
      * Delete document from application form.
      */
-    public function deleteDocument(Request $request, ApplicationForm $form, $documentId)
+    public function deleteDocument(Request $request, string $application_form, $documentId)
     {
         $user = $request->user();
+        $form = $this->findForm($application_form);
 
         $document = $form->documents()->find($documentId);
         if (!$document) {
@@ -305,9 +453,10 @@ class ApplicationFormController extends Controller
     /**
      * Remove the specified application form.
      */
-    public function destroy(Request $request, ApplicationForm $form)
+    public function destroy(Request $request, string $application_form)
     {
         $user = $request->user();
+        $form = $this->findForm($application_form);
 
         // Only admin can delete application forms
         if ($user->type !== 'admin') {
