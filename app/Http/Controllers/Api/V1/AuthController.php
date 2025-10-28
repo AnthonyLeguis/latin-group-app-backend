@@ -59,8 +59,16 @@ class AuthController extends Controller
 
     public function googleCallback()
     {
+        \Log::info('📞 Google callback recibido');
+        
         try {
             $result = $this->authService->handleGoogleCallback();
+
+            \Log::info('✅ Callback procesado exitosamente:', [
+                'user_id' => $result['user']['id'],
+                'user_email' => $result['user']['email'],
+                'user_type' => $result['user']['type']
+            ]);
 
             // Redirigir al frontend con el token en la URL
             $frontendUrl = env('FRONTEND_URL', 'http://localhost:4200') . '/dashboard';
@@ -68,13 +76,24 @@ class AuthController extends Controller
             $queryParams = http_build_query([
                 'token' => $result['token'],
                 'user_type' => $result['user']['type'],
-                'user_id' => $result['user']['id']
+                'user_id' => $result['user']['id'],
+                'user_name' => $result['user']['name'],
+                'user_email' => $result['user']['email']
             ]);
 
-            return redirect($frontendUrl . '?' . $queryParams);
+            $redirectUrl = $frontendUrl . '?' . $queryParams;
+            
+            \Log::info('🔀 Redirigiendo a:', ['url' => $redirectUrl]);
+
+            return redirect($redirectUrl);
 
         } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
+
+            \Log::error('❌ Error en googleCallback:', [
+                'message' => $errorMessage,
+                'trace' => $e->getTraceAsString()
+            ]);
 
             // Redirigir a página de error según el tipo de error
             $frontendUrl = env('FRONTEND_URL', 'http://localhost:4200') . '/auth/access-denied';

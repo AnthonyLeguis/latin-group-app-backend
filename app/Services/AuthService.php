@@ -53,34 +53,63 @@ class AuthService
 
     public function handleGoogleCallback(): array
     {
-        $googleUser = Socialite::driver('google')->stateless()->user();
+        \Log::info('🔍 Iniciando callback de Google...');
+        
+        try {
+            $googleUser = Socialite::driver('google')->stateless()->user();
+            
+            \Log::info('✅ Usuario de Google obtenido:', [
+                'google_id' => $googleUser->getId(),
+                'email' => $googleUser->getEmail(),
+                'name' => $googleUser->getName()
+            ]);
 
-        // Buscar usuario existente por email
-        $user = User::where('email', $googleUser->getEmail())->first();
+            // Buscar usuario existente por email
+            $user = User::where('email', $googleUser->getEmail())->first();
 
-        // Verificar que el usuario existe
-        if (!$user) {
-            throw new \Exception('Usuario no registrado en el sistema');
-        }
+            // Verificar que el usuario existe
+            if (!$user) {
+                \Log::warning('❌ Usuario no encontrado en la base de datos:', [
+                    'email' => $googleUser->getEmail()
+                ]);
+                throw new \Exception('Usuario no registrado en el sistema');
+            }
 
-        // Actualizar información de Google si es necesario
-        $user->update([
-            'google_id' => $googleUser->getId(),
-            'avatar' => $googleUser->getAvatar(),
-            'name' => $googleUser->getName(), // Actualizar nombre si cambió
-        ]);
-
-        $token = $user->createToken('google-token')->plainTextToken;
-
-        return [
-            'user' => [
+            \Log::info('✅ Usuario encontrado en la base de datos:', [
                 'id' => $user->id,
-                'name' => $user->name,
                 'email' => $user->email,
-                'type' => $user->type,
-            ],
-            'token' => $token,
-        ];
+                'type' => $user->type
+            ]);
+
+            // Actualizar información de Google si es necesario
+            $user->update([
+                'google_id' => $googleUser->getId(),
+                'avatar' => $googleUser->getAvatar(),
+                'name' => $googleUser->getName(), // Actualizar nombre si cambió
+            ]);
+
+            \Log::info('✅ Usuario actualizado con información de Google');
+
+            $token = $user->createToken('google-token')->plainTextToken;
+
+            \Log::info('✅ Token generado correctamente');
+
+            return [
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'type' => $user->type,
+                ],
+                'token' => $token,
+            ];
+        } catch (\Exception $e) {
+            \Log::error('❌ Error en handleGoogleCallback:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
     }
 
     public function redirectToGoogle(): \Symfony\Component\HttpFoundation\RedirectResponse
