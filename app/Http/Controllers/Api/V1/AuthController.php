@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Data\Auth\LoginData;
 use App\Data\Auth\RegisterUserData;
+use App\Data\Auth\ForgotPasswordData;
+use App\Data\Auth\ResetPasswordData;
+use App\Data\Auth\ChangePasswordData;
 use App\Http\Controllers\Controller;
 use App\Services\AuthService;
 use Illuminate\Http\Request;
@@ -104,6 +107,58 @@ class AuthController extends Controller
             ]);
 
             return redirect($frontendUrl . '?' . $queryParams);
+        }
+    }
+
+    /**
+     * Solicitar recuperación de contraseña
+     */
+    public function forgotPassword(Request $request)
+    {
+        $data = ForgotPasswordData::from($request->all());
+
+        try {
+            $result = $this->authService->forgotPassword($data);
+            return response()->json($result);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Resetear la contraseña con el token
+     */
+    public function resetPassword(Request $request)
+    {
+        $data = ResetPasswordData::from($request->all());
+
+        try {
+            $result = $this->authService->resetPassword($data);
+            return response()->json($result);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Cambiar contraseña del usuario autenticado
+     */
+    public function changePassword(Request $request)
+    {
+        // Verificar que hay un usuario autenticado
+        if (!$request->user()) {
+            return response()->json([
+                'error' => 'No autenticado'
+            ], 401);
+        }
+
+        $data = ChangePasswordData::from($request->all());
+
+        try {
+            $result = $this->authService->changePassword($request->user(), $data);
+            return response()->json($result);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
         }
     }
 }

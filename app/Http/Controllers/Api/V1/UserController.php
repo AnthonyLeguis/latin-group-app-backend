@@ -37,6 +37,13 @@ class UserController extends Controller
                       ->orderBy('created_at', 'desc');
                 }]);
             }
+
+            // Si se están pidiendo clients, cargar la relación application_form
+            if ($type === 'client') {
+                $query->with(['applicationFormsAsClient' => function ($q) {
+                    $q->select('id', 'client_id', 'status', 'confirmed');
+                }]);
+            }
         }
 
         // Siempre cargar quien creó al usuario
@@ -59,6 +66,23 @@ class UserController extends Controller
         $query->orderBy('created_at', 'desc');
 
         $users = $query->paginate(15);
+
+        // Si se están listando clientes, agregar el atributo application_form manualmente
+        if ($request->has('type') && $request->type === 'client') {
+            $users->getCollection()->transform(function ($user) {
+                $form = $user->applicationFormsAsClient->first();
+                $user->application_form = $form ? [
+                    'id' => $form->id,
+                    'status' => $form->status,
+                    'confirmed' => $form->confirmed
+                ] : null;
+                
+                // Ocultar la relación original para no duplicar datos
+                $user->makeHidden('applicationFormsAsClient');
+                
+                return $user;
+            });
+        }
 
         return response()->json($users);
     }

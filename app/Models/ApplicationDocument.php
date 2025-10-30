@@ -23,6 +23,15 @@ class ApplicationDocument extends Model
         'file_size' => 'integer',
     ];
 
+    protected $appends = [
+        'file_url',
+        'file_size_formatted',
+        'is_image',
+        'is_pdf',
+        'is_audio',
+        'uploaded_at'
+    ];
+
     // Relationships
     public function applicationForm(): BelongsTo
     {
@@ -34,32 +43,71 @@ class ApplicationDocument extends Model
         return $this->belongsTo(User::class, 'uploaded_by');
     }
 
-    // Helper methods
-    public function getFileUrl(): string
+    // Accessors (computed properties)
+    public function getFileUrlAttribute(): string
     {
-        return Storage::url($this->file_path);
+        return asset('storage/' . $this->file_path);
     }
 
-    public function getFileSizeFormatted(): string
+    public function getFileSizeFormattedAttribute(): string
     {
         $bytes = $this->file_size;
-        $units = ['B', 'KB', 'MB', 'GB'];
-
-        for ($i = 0; $bytes > 1024 && $i < count($units) - 1; $i++) {
-            $bytes /= 1024;
+        
+        if ($bytes >= 1073741824) {
+            return number_format($bytes / 1073741824, 2) . ' GB';
+        } elseif ($bytes >= 1048576) {
+            return number_format($bytes / 1048576, 2) . ' MB';
+        } elseif ($bytes >= 1024) {
+            return number_format($bytes / 1024, 2) . ' KB';
+        } else {
+            return $bytes . ' bytes';
         }
-
-        return round($bytes, 2) . ' ' . $units[$i];
     }
 
-    public function isImage(): bool
+    public function getIsImageAttribute(): bool
     {
         return str_starts_with($this->mime_type, 'image/');
     }
 
-    public function isPdf(): bool
+    public function getIsPdfAttribute(): bool
     {
         return $this->mime_type === 'application/pdf';
+    }
+
+    public function getIsAudioAttribute(): bool
+    {
+        return str_starts_with($this->mime_type, 'audio/');
+    }
+
+    public function getUploadedAtAttribute(): string
+    {
+        return $this->created_at->toIso8601String();
+    }
+
+    // Helper methods (for internal use)
+    public function getFileUrl(): string
+    {
+        return $this->file_url;
+    }
+
+    public function getFileSizeFormatted(): string
+    {
+        return $this->file_size_formatted;
+    }
+
+    public function isImage(): bool
+    {
+        return $this->is_image;
+    }
+
+    public function isPdf(): bool
+    {
+        return $this->is_pdf;
+    }
+
+    public function isAudio(): bool
+    {
+        return $this->is_audio;
     }
 
     // Delete file when model is deleted

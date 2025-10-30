@@ -23,10 +23,17 @@ Route::post('v1/auth/login', [AuthController::class, 'login']);
 Route::get('v1/auth/google', [AuthController::class, 'googleRedirect']);
 Route::get('v1/auth/google/callback', [AuthController::class, 'googleCallback']);
 
+// Rutas de recuperación de contraseña (públicas)
+Route::post('v1/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('v1/auth/reset-password', [AuthController::class, 'resetPassword']);
+
 // Rutas protegidas por autenticación
 Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     // Registro de usuarios (requiere autenticación)
     Route::post('auth/register', [AuthController::class, 'register']);
+    
+    // Cambiar contraseña (requiere autenticación)
+    Route::post('auth/change-password', [AuthController::class, 'changePassword']);
 
     // Gestión de usuarios (solo admin y agent)
     // Admin: CRUD completo para admin, agent y client
@@ -45,6 +52,8 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::post('application-forms/{form}/reject-changes', [ApplicationFormController::class, 'rejectPendingChanges']);
     Route::post('application-forms/{form}/renew-token', [ApplicationFormController::class, 'renewToken']);
     Route::post('application-forms/{form}/documents', [ApplicationFormController::class, 'uploadDocument']);
+    Route::get('application-forms/{form}/documents/{documentId}/view', [ApplicationFormController::class, 'viewDocument']);
+    Route::get('application-forms/{form}/documents/{documentId}/download', [ApplicationFormController::class, 'downloadDocument']);
     Route::delete('application-forms/{form}/documents/{documentId}', [ApplicationFormController::class, 'deleteDocument']);
     Route::get('forms/{id}/download-pdf', [ConfirmationController::class, 'downloadPdf']);
     Route::get('forms/{id}/view-pdf', [ConfirmationController::class, 'viewPdf']);

@@ -49,7 +49,9 @@ class ApplicationFormController extends Controller
             $query->where('client_id', $request->client_id);
         }
 
-        $forms = $query->orderBy('created_at', 'desc')->paginate(15);
+        // Obtener parámetros de paginación (por defecto 15 items por página)
+        $perPage = $request->input('per_page', 15);
+        $forms = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json($forms);
     }
@@ -110,10 +112,20 @@ class ApplicationFormController extends Controller
                 return $value !== null;
             });
 
+            // Determinar el agent_id correcto:
+            // 1. Si viene en el request, usarlo (ya validado que es el del cliente)
+            // 2. Si no, obtenerlo del cliente
+            // 3. Si el cliente no tiene agente, usar el usuario actual como fallback
+            $agentId = $request->agent_id ?? $client->agent_id ?? $user->id;
+            
+            // Obtener el nombre del agente
+            $agent = User::find($agentId);
+            $agentName = $agent ? $agent->name : $user->name;
+
             $form = ApplicationForm::create([
                 'client_id' => $client->id,
-                'agent_id' => $user->id,
-                'agent_name' => $user->name,
+                'agent_id' => $agentId,
+                'agent_name' => $agentName,
                 ...$formData,
                 'status' => $data->status ?? 'En Revisión',
                 'confirmed' => $data->confirmed ?? false,
@@ -390,15 +402,33 @@ class ApplicationFormController extends Controller
         }
 
         $request->validate([
-            'document' => 'required|file|mimes:jpeg,jpg,png,pdf|max:5120', // 5MB max
-            'document_type' => 'required|string|max:100'
+            'document' => 'required|file|mimes:jpeg,jpg,png,pdf,mp3,wma|max:5120', // 5MB max, incluye audio
+            'document_type' => 'nullable|string|max:100'
         ]);
 
         try {
             $file = $request->file('document');
             $originalName = $file->getClientOriginalName();
-            $fileName = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            $extension = $file->getClientOriginalExtension();
+            $fileName = time() . '_' . uniqid() . '.' . $extension;
+            
+            // Guardar en storage/public/application_documents
             $filePath = $file->storeAs('application_documents', $fileName, 'public');
+
+            // Determinar el tipo de documento automáticamente si no se proporciona
+            $documentType = $request->document_type;
+            if (!$documentType) {
+                $mimeType = $file->getMimeType();
+                if (str_starts_with($mimeType, 'image/')) {
+                    $documentType = 'imagen';
+                } elseif ($mimeType === 'application/pdf') {
+                    $documentType = 'pdf';
+                } elseif (str_starts_with($mimeType, 'audio/')) {
+                    $documentType = 'audio';
+                } else {
+                    $documentType = 'documento';
+                }
+            }
 
             $document = $form->documents()->create([
                 'uploaded_by' => $user->id,
@@ -407,8 +437,15 @@ class ApplicationFormController extends Controller
                 'file_path' => $filePath,
                 'mime_type' => $file->getMimeType(),
                 'file_size' => $file->getSize(),
-                'document_type' => $request->document_type
+                'document_type' => $documentType
             ]);
+
+            // Agregar propiedades calculadas para el frontend
+            $document->file_url = asset('storage/' . $filePath);
+            $document->is_image = str_starts_with($document->mime_type, 'image/');
+            $document->is_pdf = $document->mime_type === 'application/pdf';
+            $document->is_audio = str_starts_with($document->mime_type, 'audio/');
+            $document->file_size_formatted = $this->formatFileSize($document->file_size);
 
             return response()->json([
                 'message' => 'Documento subido exitosamente',
@@ -419,6 +456,22 @@ class ApplicationFormController extends Controller
             return response()->json([
                 'error' => 'Error al subir el documento: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Format file size to human readable format
+     */
+    private function formatFileSize($bytes): string
+    {
+        if ($bytes >= 1073741824) {
+            return number_format($bytes / 1073741824, 2) . ' GB';
+        } elseif ($bytes >= 1048576) {
+            return number_format($bytes / 1048576, 2) . ' MB';
+        } elseif ($bytes >= 1024) {
+            return number_format($bytes / 1024, 2) . ' KB';
+        } else {
+            return $bytes . ' bytes';
         }
     }
 
@@ -443,7 +496,12 @@ class ApplicationFormController extends Controller
         }
 
         try {
-            $document->delete(); // This will also delete the file via model event
+            // Eliminar el archivo físico del servidor
+            if (Storage::disk('public')->exists($document->file_path)) {
+                Storage::disk('public')->delete($document->file_path);
+            }
+
+            $document->delete();
 
             return response()->json([
                 'message' => 'Documento eliminado exitosamente'
@@ -454,6 +512,64 @@ class ApplicationFormController extends Controller
                 'error' => 'Error al eliminar el documento: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * View document (inline display)
+     */
+    public function viewDocument(Request $request, string $application_form, $documentId)
+    {
+        $user = $request->user();
+        $form = $this->findForm($application_form);
+
+        // Check permissions
+        if (!$form->canView($user)) {
+            return response()->json([
+                'error' => 'No tienes permisos para ver documentos de esta planilla'
+            ], 403);
+        }
+
+        $document = $form->documents()->find($documentId);
+        if (!$document) {
+            return response()->json(['error' => 'Documento no encontrado'], 404);
+        }
+
+        // Verificar que el archivo existe
+        if (!Storage::disk('public')->exists($document->file_path)) {
+            return response()->json(['error' => 'Archivo no encontrado en el servidor'], 404);
+        }
+
+        $filePath = Storage::disk('public')->path($document->file_path);
+        return response()->file($filePath);
+    }
+
+    /**
+     * Download document
+     */
+    public function downloadDocument(Request $request, string $application_form, $documentId)
+    {
+        $user = $request->user();
+        $form = $this->findForm($application_form);
+
+        // Check permissions
+        if (!$form->canView($user)) {
+            return response()->json([
+                'error' => 'No tienes permisos para descargar documentos de esta planilla'
+            ], 403);
+        }
+
+        $document = $form->documents()->find($documentId);
+        if (!$document) {
+            return response()->json(['error' => 'Documento no encontrado'], 404);
+        }
+
+        // Verificar que el archivo existe
+        if (!Storage::disk('public')->exists($document->file_path)) {
+            return response()->json(['error' => 'Archivo no encontrado en el servidor'], 404);
+        }
+
+        $filePath = Storage::disk('public')->path($document->file_path);
+        return response()->download($filePath, $document->original_name);
     }
 
     /**
