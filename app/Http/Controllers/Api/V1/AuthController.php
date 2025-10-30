@@ -161,4 +161,129 @@ class AuthController extends Controller
             return response()->json(['error' => $e->getMessage()], 400);
         }
     }
+
+    /**
+     * Renovar el token de autenticación (extender sesión 8 horas más)
+     */
+    public function refreshToken(Request $request)
+    {
+        try {
+            // Verificar que hay un usuario autenticado
+            if (!$request->user()) {
+                return response()->json([
+                    'error' => 'No autenticado'
+                ], 401);
+            }
+
+            $user = $request->user();
+
+            // Eliminar el token actual
+            $request->user()->currentAccessToken()->delete();
+
+            // Crear un nuevo token con 8 horas de vigencia
+            $token = $user->createToken('API Token')->plainTextToken;
+
+            \Log::info('Token renovado exitosamente:', [
+                'user_id' => $user->id,
+                'email' => $user->email
+            ]);
+
+            return response()->json([
+                'message' => 'Sesión renovada exitosamente',
+                'token' => $token,
+                'expires_in' => 480 // minutos (8 horas)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Verificar el tiempo restante del token actual
+     */
+    public function checkTokenExpiry(Request $request)
+    {
+        try {
+            if (!$request->user()) {
+                return response()->json([
+                    'error' => 'No autenticado'
+                ], 401);
+            }
+
+            $currentToken = $request->user()->currentAccessToken();
+            
+            if (!$currentToken) {
+                return response()->json([
+                    'error' => 'Token no encontrado'
+                ], 401);
+            }
+
+            // Obtener la fecha de creación del token
+            $createdAt = $currentToken->created_at;
+            $expirationMinutes = config('sanctum.expiration', 480); // 8 horas por defecto
+            
+            // Calcular la fecha de expiración
+            $expiresAt = $createdAt->addMinutes($expirationMinutes);
+            
+            // Calcular los minutos restantes
+            $minutesRemaining = now()->diffInMinutes($expiresAt, false);
+            
+            // Si el valor es negativo, el token ya expiró
+            if ($minutesRemaining <= 0) {
+                return response()->json([
+                    'expired' => true,
+                    'minutes_remaining' => 0,
+                    'seconds_remaining' => 0,
+                    'message' => 'El token ha expirado'
+                ]);
+            }
+
+            // Calcular segundos restantes
+            $secondsRemaining = now()->diffInSeconds($expiresAt, false);
+
+            return response()->json([
+                'expired' => false,
+                'minutes_remaining' => $minutesRemaining,
+                'seconds_remaining' => $secondsRemaining,
+                'expires_at' => $expiresAt->toIso8601String(),
+                'created_at' => $createdAt->toIso8601String(),
+                'should_warn' => $secondsRemaining <= 30 // Advertir en los últimos 30 segundos
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error al verificar expiración del token:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Cerrar sesión (revocar token actual)
+     */
+    public function logout(Request $request)
+    {
+        try {
+            if (!$request->user()) {
+                return response()->json([
+                    'error' => 'No autenticado'
+                ], 401);
+            }
+
+            // Eliminar el token actual
+            $request->user()->currentAccessToken()->delete();
+
+            \Log::info('Sesión cerrada exitosamente:', [
+                'user_id' => $request->user()->id,
+                'email' => $request->user()->email
+            ]);
+
+            return response()->json([
+                'message' => 'Sesión cerrada exitosamente'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
 }

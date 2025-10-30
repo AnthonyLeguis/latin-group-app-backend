@@ -34,6 +34,11 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     
     // Cambiar contraseña (requiere autenticación)
     Route::post('auth/change-password', [AuthController::class, 'changePassword']);
+    
+    // Gestión de sesión y tokens
+    Route::post('auth/refresh-token', [AuthController::class, 'refreshToken']); // Renovar token (extender sesión)
+    Route::get('auth/check-token-expiry', [AuthController::class, 'checkTokenExpiry']); // Verificar tiempo restante
+    Route::post('auth/logout', [AuthController::class, 'logout']); // Cerrar sesión
 
     // Gestión de usuarios (solo admin y agent)
     // Admin: CRUD completo para admin, agent y client
