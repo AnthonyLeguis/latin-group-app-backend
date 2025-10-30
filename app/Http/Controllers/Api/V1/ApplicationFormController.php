@@ -27,7 +27,7 @@ class ApplicationFormController extends Controller
     {
         $user = $request->user();
 
-        $query = ApplicationForm::with(['client', 'agent', 'documents']);
+    $query = ApplicationForm::with(['client', 'client.createdBy', 'agent', 'documents']);
 
         // Filter based on user type
         if ($user->type === 'admin') {
@@ -114,10 +114,11 @@ class ApplicationFormController extends Controller
 
             // Determinar el agent_id correcto:
             // 1. Si viene en el request, usarlo (ya validado que es el del cliente)
-            // 2. Si no, obtenerlo del cliente
+            // 2. Si no, obtenerlo del agente que creó al cliente (created_by)
             // 3. Si el cliente no tiene agente, usar el usuario actual como fallback
-            $agentId = $request->agent_id ?? $client->agent_id ?? $user->id;
-            
+            $clientAgentId = $client->created_by;
+            $agentId = $request->agent_id ?? $clientAgentId ?? $user->id;
+
             // Obtener el nombre del agente
             $agent = User::find($agentId);
             $agentName = $agent ? $agent->name : $user->name;

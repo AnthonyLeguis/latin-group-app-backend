@@ -65,8 +65,8 @@ class ConfirmationController extends Controller
                     'zip_code' => $form->zip_code,
                     'phone' => $form->phone,
                     'email' => $form->email,
-                    // Datos del agente
-                    'agent_name' => $form->agent_name,
+                    // Datos del agente (usar relación siempre actualizada)
+                    'agent_name' => $form->agent ? $form->agent->name : $form->agent_name,
                     'agent_phone' => $form->agent->phone ?? null,
                     // Datos del plan
                     'insurance_company' => $form->insurance_company,
@@ -143,8 +143,8 @@ class ConfirmationController extends Controller
      */
     public function downloadPdf(int $id)
     {
-        // Obtener la planilla
-        $form = ApplicationForm::findOrFail($id);
+        // Obtener la planilla con la relación del agente
+        $form = ApplicationForm::with('agent')->findOrFail($id);
 
         // Verificar que esté confirmada
         if (!$form->isConfirmedByClient()) {
@@ -176,8 +176,8 @@ class ConfirmationController extends Controller
      */
     public function viewPdf(int $id)
     {
-        // Obtener la planilla
-        $form = ApplicationForm::findOrFail($id);
+        // Obtener la planilla con la relación del agente
+        $form = ApplicationForm::with('agent')->findOrFail($id);
 
         // Verificar que esté confirmada
         if (!$form->isConfirmedByClient()) {

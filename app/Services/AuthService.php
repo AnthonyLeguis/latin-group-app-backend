@@ -48,6 +48,7 @@ class AuthService
             'password' => Hash::make($data->password),
             'type' => $data->type,
             'created_by' => $createdBy,
+            'agent_id' => $data->agent_id, // Asignar el agente seleccionado
         ]);
 
         $token = $user->createToken('API Token')->plainTextToken;

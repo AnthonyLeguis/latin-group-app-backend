@@ -11,6 +11,7 @@ class RegisterUserData extends Data
         public string $email,
         public string $password,
         public string $type, // admin, agent, client
+        public ?int $agent_id = null, // ID del agente asignado (para clientes)
     ) {}
 
     public static function rules(): array
@@ -20,6 +21,7 @@ class RegisterUserData extends Data
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
             'type' => 'required|in:admin,agent,client',
+            'agent_id' => 'nullable|integer|exists:users,id',
         ];
     }
 }

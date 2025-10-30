@@ -40,9 +40,12 @@ class UserController extends Controller
 
             // Si se están pidiendo clients, cargar la relación application_form
             if ($type === 'client') {
-                $query->with(['applicationFormsAsClient' => function ($q) {
-                    $q->select('id', 'client_id', 'status', 'confirmed');
-                }]);
+                $query->with([
+                    'applicationFormsAsClient' => function ($q) {
+                        $q->select('id', 'client_id', 'status', 'confirmed');
+                    },
+                    'agent' // Cargar el agente asignado al cliente
+                ]);
             }
         }
 
@@ -243,6 +246,10 @@ class UserController extends Controller
                     'status' => \App\Models\ApplicationForm::STATUS_PENDING,
                 ]);
             }
+            
+            // Recargar el usuario con sus relaciones para devolver datos completos
+            $result['user'] = User::with(['agent', 'createdBy', 'createdByAdmin'])
+                ->find($result['user']->id);
             
             return response()->json($result, 201);
         } catch (\Exception $e) {

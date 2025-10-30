@@ -161,7 +161,10 @@ class PdfGeneratorService
         $pdf->SetY($pdf->GetY() + 5);
         $this->applyArialFont($pdf, 12);
         
-        $texto = "Le enviamos este mensaje en nombre de Latin Group Insurance para confirmar su autorización al Asesor {$form->agent_name} a trabajar con el NPN 19903181 / 19606203. De {$form->client->name} para acceder y utilizar la información confidencial que usted ha proporcionado para el período 2025. Cabe destacar que la explicación de su plan ya ha sido completada y verificada tanto por usted como por su asesor.";
+        // Obtener nombre del agente de la relación (siempre actualizado)
+        $agentName = $form->agent ? $form->agent->name : $form->agent_name;
+        
+        $texto = "Le enviamos este mensaje en nombre de Latin Group Insurance para confirmar su autorización al Asesor {$agentName} a trabajar con el NPN 19903181 / 19606203. De {$form->client->name} para acceder y utilizar la información confidencial que usted ha proporcionado para el período 2025. Cabe destacar que la explicación de su plan ya ha sido completada y verificada tanto por usted como por su asesor.";
         $pdf->MultiCell(0, 5, $texto, 0, 'L');
 
         // Plan (sin justificación)

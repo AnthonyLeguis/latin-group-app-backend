@@ -283,6 +283,9 @@ class ApplicationForm extends Model
         $this->invalidateToken(); // Token de un solo uso
         $this->save();
 
+        // Cargar relación del agente antes de generar PDF
+        $this->load('agent');
+
         // Generar PDF automáticamente
         try {
             $pdfGenerator = app(\App\Services\PdfGeneratorService::class);
@@ -293,7 +296,9 @@ class ApplicationForm extends Model
             
             \Log::info("✅ PDF generado exitosamente para planilla #{$this->id}", [
                 'pdf_path' => $pdfPath,
-                'client_id' => $this->client_id
+                'client_id' => $this->client_id,
+                'agent_id' => $this->agent_id,
+                'agent_name' => $this->agent ? $this->agent->name : $this->agent_name
             ]);
         } catch (\Exception $e) {
             \Log::error("❌ Error al generar PDF para planilla #{$this->id}", [

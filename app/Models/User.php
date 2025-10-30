@@ -21,6 +21,7 @@ class User extends Authenticatable
         'created_by',
         'created_by_admin',
         'updated_by',
+        'agent_id', // Agente asignado al cliente
     ];
 
     protected $hidden = [
@@ -68,6 +69,18 @@ class User extends Authenticatable
     public function createdUsers()
     {
         return $this->hasMany(User::class, 'created_by');
+    }
+
+    // Relación: agente asignado al cliente
+    public function agent()
+    {
+        return $this->belongsTo(User::class, 'agent_id');
+    }
+
+    // Relación: clientes asignados a un agente
+    public function assignedClients()
+    {
+        return $this->hasMany(User::class, 'agent_id');
     }
 
     // Relaciones para application forms
