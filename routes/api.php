@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\ApplicationFormController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\ConfirmationController;
 use App\Http\Controllers\Api\V1\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -10,6 +11,12 @@ use Illuminate\Support\Facades\Route;
 // Ruta pública para formulario de contacto
 Route::post('v1/contact', [\App\Http\Controllers\Api\V1\ContactController::class, 'submit'])
     ->middleware('throttle:5,1');
+
+// Rutas públicas para confirmación de planillas (sin autenticación)
+Route::prefix('v1/confirm')->group(function () {
+    Route::get('{token}', [ConfirmationController::class, 'show']); // Ver datos de la planilla
+    Route::post('{token}/accept', [ConfirmationController::class, 'accept']); // Confirmar planilla
+});
 
 // Rutas de Autenticación (Acceso público)
 Route::post('v1/auth/login', [AuthController::class, 'login']);
@@ -36,8 +43,11 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::post('application-forms/{form}/status', [ApplicationFormController::class, 'updateStatus']);
     Route::post('application-forms/{form}/approve-changes', [ApplicationFormController::class, 'approvePendingChanges']);
     Route::post('application-forms/{form}/reject-changes', [ApplicationFormController::class, 'rejectPendingChanges']);
+    Route::post('application-forms/{form}/renew-token', [ApplicationFormController::class, 'renewToken']);
     Route::post('application-forms/{form}/documents', [ApplicationFormController::class, 'uploadDocument']);
     Route::delete('application-forms/{form}/documents/{documentId}', [ApplicationFormController::class, 'deleteDocument']);
+    Route::get('forms/{id}/download-pdf', [ConfirmationController::class, 'downloadPdf']);
+    Route::get('forms/{id}/view-pdf', [ConfirmationController::class, 'viewPdf']);
     
     // Rutas RESTful estándar
     Route::apiResource('application-forms', ApplicationFormController::class);

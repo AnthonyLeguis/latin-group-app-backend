@@ -119,9 +119,15 @@ class ApplicationFormController extends Controller
                 'confirmed' => $data->confirmed ?? false,
             ]);
 
+            // Generar token de confirmación con expiración de 3 días
+            $token = $form->generateConfirmationToken();
+
             return response()->json([
                 'message' => 'Planilla de aplicación creada exitosamente',
-                'form' => $form->load(['client', 'agent'])
+                'form' => $form->load(['client', 'agent']),
+                'confirmation_token' => $token,
+                'token_expires_at' => $form->token_expires_at,
+                'confirmation_link' => url("/confirm/{$token}")
             ], 201);
 
         } catch (\Exception $e) {
@@ -477,6 +483,47 @@ class ApplicationFormController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Error al eliminar la planilla: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Renovar el token de confirmación (extender 3 días más)
+     * Solo agent creador o admin pueden renovar
+     */
+    public function renewToken(Request $request, string $application_form)
+    {
+        $user = $request->user();
+        $form = $this->findForm($application_form);
+
+        // Verificar permisos
+        if ($user->type !== 'admin' && $form->agent_id !== $user->id) {
+            return response()->json([
+                'error' => 'No autorizado para renovar el token de esta planilla'
+            ], 403);
+        }
+
+        // No se puede renovar si ya fue confirmada
+        if ($form->isConfirmedByClient()) {
+            return response()->json([
+                'error' => 'No se puede renovar el token de una planilla ya confirmada',
+                'confirmed_at' => $form->confirmed_at
+            ], 409);
+        }
+
+        try {
+            $token = $form->renewToken();
+
+            return response()->json([
+                'message' => 'Token renovado exitosamente',
+                'token' => $token,
+                'expires_at' => $form->token_expires_at,
+                'confirmation_link' => url("/confirm/{$token}")
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Error al renovar el token: ' . $e->getMessage()
             ], 500);
         }
     }

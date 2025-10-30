@@ -19,13 +19,13 @@ class ApplicationFormData extends Data
         public ?string $phone2,
         public string $email,
         public string $gender, // M/F
-        public string $ssn,
+        public ?string $ssn, // Ahora opcional
         public string $legal_status,
         public string $document_number,
         public ?string $insurance_company,
         public ?string $insurance_plan,
         public ?float $subsidy,
-        public ?float $final_cost,
+        public ?float $final_cost, // Label en frontend: "Costo de la Prima"
         public ?string $employment_type, // W2/1099/Other
         public ?string $employment_company_name,
         public ?string $work_phone,
@@ -34,8 +34,8 @@ class ApplicationFormData extends Data
 
         // Póliza Data (25-29)
         public ?string $poliza_number,
-        public ?string $poliza_category,
-        public ?float $poliza_amount,
+        public ?string $poliza_category, // Label en frontend: "Póliza Dental"
+        public ?float $poliza_amount, // Label en frontend: "Monto Prima Dental"
         public ?int $poliza_payment_day,
         public ?string $poliza_beneficiary,
 
@@ -91,6 +91,32 @@ class ApplicationFormData extends Data
         public ?float $person4_wages,
         public ?string $person4_frequency,
 
+        // Person 5 Data
+        public ?string $person5_name,
+        public ?string $person5_relation,
+        public ?bool $person5_is_applicant,
+        public ?string $person5_legal_status,
+        public ?string $person5_document_number,
+        public ?string $person5_dob,
+        public ?string $person5_company_name,
+        public ?string $person5_ssn,
+        public ?string $person5_gender,
+        public ?float $person5_wages,
+        public ?string $person5_frequency,
+
+        // Person 6 Data
+        public ?string $person6_name,
+        public ?string $person6_relation,
+        public ?bool $person6_is_applicant,
+        public ?string $person6_legal_status,
+        public ?string $person6_document_number,
+        public ?string $person6_dob,
+        public ?string $person6_company_name,
+        public ?string $person6_ssn,
+        public ?string $person6_gender,
+        public ?float $person6_wages,
+        public ?string $person6_frequency,
+
         // Payment Method Data (41-47)
         public ?string $card_type,
         public ?string $card_number,
@@ -121,7 +147,7 @@ class ApplicationFormData extends Data
             'phone2' => 'nullable|string|max:20',
             'email' => 'required|email|max:255',
             'gender' => 'required|in:M,F',
-            'ssn' => 'required|string|max:20',
+            'ssn' => 'nullable|string|max:20', // Cambiado a nullable
             'legal_status' => 'required|string|max:100',
             'document_number' => 'required|string|max:50',
             'insurance_company' => 'nullable|string|max:255',
@@ -192,6 +218,32 @@ class ApplicationFormData extends Data
             'person4_gender' => 'nullable|in:M,F',
             'person4_wages' => 'nullable|numeric|min:0',
             'person4_frequency' => 'nullable|string|max:50',
+
+            // Person 5 Validation (same as person 1)
+            'person5_name' => 'nullable|string|max:255',
+            'person5_relation' => 'nullable|string|max:100',
+            'person5_is_applicant' => 'nullable|boolean',
+            'person5_legal_status' => 'nullable|string|max:100',
+            'person5_document_number' => 'nullable|string|max:50',
+            'person5_dob' => 'nullable|date|before:today',
+            'person5_company_name' => 'nullable|string|max:255',
+            'person5_ssn' => 'nullable|string|max:20',
+            'person5_gender' => 'nullable|in:M,F',
+            'person5_wages' => 'nullable|numeric|min:0',
+            'person5_frequency' => 'nullable|string|max:50',
+
+            // Person 6 Validation (same as person 1)
+            'person6_name' => 'nullable|string|max:255',
+            'person6_relation' => 'nullable|string|max:100',
+            'person6_is_applicant' => 'nullable|boolean',
+            'person6_legal_status' => 'nullable|string|max:100',
+            'person6_document_number' => 'nullable|string|max:50',
+            'person6_dob' => 'nullable|date|before:today',
+            'person6_company_name' => 'nullable|string|max:255',
+            'person6_ssn' => 'nullable|string|max:20',
+            'person6_gender' => 'nullable|in:M,F',
+            'person6_wages' => 'nullable|numeric|min:0',
+            'person6_frequency' => 'nullable|string|max:50',
 
             // Payment Method Validation
             'card_type' => 'nullable|string|max:50',

@@ -37,7 +37,7 @@ return new class extends Migration
             $table->string('insurance_company')->nullable(); // 16
             $table->string('insurance_plan')->nullable(); // 17
             $table->decimal('subsidy', 10, 2)->nullable(); // 18
-            $table->decimal('final_cost', 10, 2)->nullable(); // 19
+            $table->decimal('final_cost', 10, 2)->nullable(); // 19 - Label frontend: "Costo de la Prima"
             $table->enum('employment_type', ['W2', '1099', 'Other'])->nullable(); // 20
             $table->string('employment_company_name')->nullable(); // 21
             $table->string('work_phone')->nullable(); // 22
@@ -46,8 +46,8 @@ return new class extends Migration
 
             // Póliza Data (25-29)
             $table->string('poliza_number')->nullable(); // 25
-            $table->string('poliza_category')->nullable(); // 26
-            $table->decimal('poliza_amount', 10, 2)->nullable(); // 27
+            $table->string('poliza_category')->nullable(); // 26 - Label frontend: "Póliza Dental"
+            $table->decimal('poliza_amount', 10, 2)->nullable(); // 27 - Label frontend: "Monto Prima Dental"
             $table->integer('poliza_payment_day')->nullable(); // 28
             $table->string('poliza_beneficiary')->nullable(); // 29
 
