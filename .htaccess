@@ -1,0 +1,8 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  
+  # Si se accede a /api/ sin /public, redirigir a public/
+  RewriteCond %{REQUEST_URI} ^/api/
+  RewriteCond %{REQUEST_URI} !^/api/public/
+  RewriteRule ^(.*)$ /api/public/$1 [L,QSA]
+</IfModule>
