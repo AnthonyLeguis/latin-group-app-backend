@@ -119,25 +119,52 @@ class UserController extends Controller
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
-        // Obtener todos los agents con sus clients y application_forms
+        // Obtener todos los agentes con sus clientes (tanto los que crearon como los asignados)
         $agents = User::where('type', 'agent')
-            ->with(['createdUsers' => function ($query) {
-                $query->where('type', 'client')
-                      ->with([
-                          'applicationFormsAsClient' => function ($q) {
-                              $q->with(['reviewedBy', 'pendingChangesBy'])
-                                ->orderBy('created_at', 'desc');
-                          },
-                          'createdByAdmin' // Incluir quién fue el admin que creó el cliente
-                      ])
-                      ->orderBy('created_at', 'desc')
-                      ->select('id', 'name', 'email', 'created_by', 'created_by_admin', 'created_at', 'updated_at');
-            }])
-            ->withCount(['createdUsers as clients_count' => function ($query) {
-                $query->where('type', 'client');
-            }])
+            ->with([
+                'createdUsers' => function ($query) {
+                    $query->where('type', 'client')
+                          ->with([
+                              'applicationFormsAsClient' => function ($q) {
+                                  $q->with(['reviewedBy', 'pendingChangesBy'])
+                                    ->orderBy('created_at', 'desc');
+                              },
+                              'createdByAdmin'
+                          ])
+                          ->orderBy('created_at', 'desc')
+                          ->select('id', 'name', 'email', 'created_by', 'created_by_admin', 'created_at', 'updated_at', 'agent_id');
+                },
+                'assignedClients' => function ($query) {
+                    $query->where('type', 'client')
+                          ->with([
+                              'applicationFormsAsClient' => function ($q) {
+                                  $q->with(['reviewedBy', 'pendingChangesBy'])
+                                    ->orderBy('created_at', 'desc');
+                              },
+                              'createdByAdmin'
+                          ])
+                          ->orderBy('created_at', 'desc')
+                          ->select('id', 'name', 'email', 'created_by', 'created_by_admin', 'created_at', 'updated_at', 'agent_id');
+                }
+            ])
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->get()
+            ->map(function ($agent) {
+                $createdClients = $agent->createdUsers ?? collect();
+                $assignedClients = $agent->assignedClients ?? collect();
+
+                $combinedClients = $createdClients
+                    ->concat($assignedClients)
+                    ->unique('id')
+                    ->values();
+
+                $agent->setRelation('createdUsers', $combinedClients);
+                // Remover relación para evitar devolver dos veces los mismos clientes
+                $agent->setRelation('assignedClients', collect());
+                $agent->clients_count = $combinedClients->count();
+
+                return $agent;
+            });
 
         // Obtener planillas con cambios pendientes de aprobación
         $pendingChangesForms = \App\Models\ApplicationForm::where('has_pending_changes', true)

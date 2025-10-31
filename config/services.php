@@ -37,9 +37,14 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
-    'recaptcha' => [
-        'site_key' => env('RECAPTCHA_SITE_KEY'),
-        'project_id' => env('GOOGLE_CLOUD_PROJECT_ID'),
+    'contact' => [
+        'email' => env('CONTACT_EMAIL'),
     ],
+    
+    'recaptcha' => [
+    'site_key' => env('RECAPTCHA_SITE_KEY'),
+    'secret_key' => env('RECAPTCHA_SECRET_KEY'),
+    'project_id' => env('GOOGLE_CLOUD_PROJECT_ID'),
+],
 
 ];

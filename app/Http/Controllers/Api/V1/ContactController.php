@@ -56,7 +56,13 @@ class ContactController extends Controller
         // Envío de email profesional
         $emailError = null;
         try {
-            Mail::to(env('CONTACT_EMAIL'))->send(new ContactUsNotification($contact));
+            $contactEmail = config('services.contact.email') ?: config('mail.from.address');
+
+            if (empty($contactEmail)) {
+                throw new \RuntimeException('Contact email address is not configured.');
+            }
+
+            Mail::to($contactEmail)->send(new ContactUsNotification($contact));
             $contact->send_email = true;
             $contact->email_sent_at = Carbon::now();
         } catch (\Exception $e) {
