@@ -21,7 +21,7 @@ class ApplicationFormData extends Data
         public string $gender, // M/F
         public ?string $ssn, // Ahora opcional
         public string $legal_status,
-        public string $document_number,
+        public ?string $document_number, // Ahora opcional
         public ?string $insurance_company,
         public ?string $insurance_plan,
         public ?float $subsidy,
@@ -149,7 +149,7 @@ class ApplicationFormData extends Data
             'gender' => 'required|in:M,F',
             'ssn' => 'nullable|string|max:20', // Cambiado a nullable
             'legal_status' => 'required|string|max:100',
-            'document_number' => 'required|string|max:50',
+            'document_number' => 'nullable|string|max:50', // Cambiado a nullable
             'insurance_company' => 'nullable|string|max:255',
             'insurance_plan' => 'nullable|string|max:255',
             'subsidy' => 'nullable|numeric|min:0',
