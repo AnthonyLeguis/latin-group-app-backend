@@ -74,7 +74,7 @@ class AuthController extends Controller
             ]);
 
             // Redirigir al frontend con el token en la URL
-            $frontendUrl = env('FRONTEND_URL', 'http://localhost:4200') . '/dashboard';
+            $frontendUrl = config('services.frontend.url') . '/dashboard';
 
             $queryParams = http_build_query([
                 'token' => $result['token'],
@@ -99,7 +99,7 @@ class AuthController extends Controller
             ]);
 
             // Redirigir a página de error según el tipo de error
-            $frontendUrl = env('FRONTEND_URL', 'http://localhost:4200') . '/auth/access-denied';
+            $frontendUrl = config('services.frontend.url') . '/auth/access-denied';
 
             $queryParams = http_build_query([
                 'error' => 'access_denied',

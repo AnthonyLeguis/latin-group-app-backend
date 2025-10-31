@@ -151,7 +151,7 @@ class AuthService
         ]);
 
         // URL del frontend para resetear la contraseña
-        $resetUrl = env('FRONTEND_URL', 'http://localhost:4200') . '/auth/reset-password?token=' . $token . '&email=' . urlencode($data->email);
+        $resetUrl = config('services.frontend.url') . '/auth/reset-password?token=' . $token . '&email=' . urlencode($data->email);
 
         // Enviar email
         Mail::send('emails.password-reset', [

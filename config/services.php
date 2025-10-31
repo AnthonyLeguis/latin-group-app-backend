@@ -42,9 +42,13 @@ return [
     ],
     
     'recaptcha' => [
-    'site_key' => env('RECAPTCHA_SITE_KEY'),
-    'secret_key' => env('RECAPTCHA_SECRET_KEY'),
-    'project_id' => env('GOOGLE_CLOUD_PROJECT_ID'),
-],
+        'site_key' => env('RECAPTCHA_SITE_KEY'),
+        'secret_key' => env('RECAPTCHA_SECRET_KEY'),
+        'project_id' => env('GOOGLE_CLOUD_PROJECT_ID'),
+    ],
+
+    'frontend' => [
+        'url' => env('FRONTEND_URL', 'http://localhost:4200'),
+    ],
 
 ];
