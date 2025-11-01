@@ -55,6 +55,7 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::post('application-forms/{form}/status', [ApplicationFormController::class, 'updateStatus']);
     Route::post('application-forms/{form}/approve-changes', [ApplicationFormController::class, 'approvePendingChanges']);
     Route::post('application-forms/{form}/reject-changes', [ApplicationFormController::class, 'rejectPendingChanges']);
+    Route::get('application-forms/{form}/history', [ApplicationFormController::class, 'getHistory']); // ✅ Nueva ruta
     Route::post('application-forms/{form}/renew-token', [ApplicationFormController::class, 'renewToken']);
     Route::post('application-forms/{form}/documents', [ApplicationFormController::class, 'uploadDocument']);
     Route::get('application-forms/{form}/documents/{documentId}/view', [ApplicationFormController::class, 'viewDocument']);

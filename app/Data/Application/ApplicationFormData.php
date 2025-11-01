@@ -35,6 +35,7 @@ class ApplicationFormData extends Data
         // Póliza Data (25-29)
         public ?string $poliza_number,
         public ?string $poliza_category, // Label en frontend: "Póliza Dental"
+        public ?string $poliza_key, // Nuevo campo: "Clave"
         public ?float $poliza_amount, // Label en frontend: "Monto Prima Dental"
         public ?int $poliza_payment_day,
         public ?string $poliza_beneficiary,
@@ -130,6 +131,10 @@ class ApplicationFormData extends Data
         public ?string $status, // Activo, Inactivo, En Revisión
         public ?string $status_comment,
         public ?bool $confirmed,
+        
+        // Rejection tracking
+        public ?string $rejection_reason,
+        public ?string $rejected_at,
     ) {}
 
     public static function rules(): array
@@ -163,6 +168,7 @@ class ApplicationFormData extends Data
             // Póliza Data Validation
             'poliza_number' => 'nullable|string|max:100',
             'poliza_category' => 'nullable|string|max:100',
+            'poliza_key' => 'nullable|string|max:100',
             'poliza_amount' => 'nullable|numeric|min:0',
             'poliza_payment_day' => 'nullable|integer|min:1|max:31',
             'poliza_beneficiary' => 'nullable|string|max:255',

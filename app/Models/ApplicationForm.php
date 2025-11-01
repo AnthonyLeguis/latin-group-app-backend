@@ -61,6 +61,9 @@ class ApplicationForm extends Model
         // Status and Confirmation
         'status', 'status_comment', 'confirmed', 'reviewed_by', 'reviewed_at',
         
+        // Rejection tracking (cuando admin rechaza cambios pendientes)
+        'rejection_reason', 'rejected_at',
+        
         // Pending Changes (for Active forms edited by agents)
         'pending_changes', 'has_pending_changes', 'pending_changes_at', 'pending_changes_by',
         
@@ -145,6 +148,14 @@ class ApplicationForm extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(ApplicationDocument::class, 'application_form_id');
+    }
+
+    /**
+     * Relación con el historial de cambios
+     */
+    public function history(): HasMany
+    {
+        return $this->hasMany(ApplicationFormHistory::class)->orderBy('created_at', 'desc');
     }
 
     // Helper methods

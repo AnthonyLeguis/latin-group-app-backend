@@ -65,9 +65,18 @@ class UserPolicy
             return true; // Admin puede modificar cualquier usuario
         }
 
-        if ($user->isAgent()) {
-            // Agent solo puede modificar clients que él creó
-            return $model->isClient() && $model->created_by === $user->id;
+        if ($user->isAgent() && $model->isClient() && $model->created_by === $user->id) {
+            // Agent puede modificar clients que él creó
+            // Verificar si el cliente tiene una application form activa
+            $applicationForm = $model->applicationFormsAsClient()->first();
+            
+            // Si no tiene application form O la planilla NO está activa, puede modificar directamente
+            if (!$applicationForm || $applicationForm->status !== \App\Models\ApplicationForm::STATUS_ACTIVE) {
+                return true;
+            }
+            
+            // Si la planilla está activa, NO puede modificar directamente (debe usar pending_changes)
+            return false;
         }
 
         return false;

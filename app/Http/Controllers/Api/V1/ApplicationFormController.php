@@ -183,18 +183,40 @@ class ApplicationFormController extends Controller
             ], 403);
         }
 
-        $data = ApplicationFormData::from($request->all());
-
         try {
-            $formData = array_filter($data->toArray(), function($value) {
-                return $value !== null;
-            });
-
-            // Si es un agente editando una planilla activa
+            $requestData = $request->all();
+            
+            // Si es un agente editando una planilla activa, puede incluir cambios del cliente
             if ($form->needsAdminApproval($user)) {
+                // Separar cambios del cliente (prefijo client_) de cambios de la planilla
+                $clientChanges = [];
+                $formDataInput = [];
+                
+                foreach ($requestData as $key => $value) {
+                    if (str_starts_with($key, 'client_')) {
+                        // Guardar cambios del cliente con su prefijo para pending_changes
+                        $clientChanges[$key] = $value;
+                    } else {
+                        // Datos de la planilla para validar con ApplicationFormData
+                        $formDataInput[$key] = $value;
+                    }
+                }
+                
+                // Si hay cambios de la planilla, validarlos
+                $formData = [];
+                if (!empty($formDataInput)) {
+                    $data = ApplicationFormData::from($formDataInput);
+                    $formData = array_filter($data->toArray(), function($value) {
+                        return $value !== null;
+                    });
+                }
+                
+                // Combinar ambos para guardar en pending_changes
+                $allChanges = array_merge($formData, $clientChanges);
+                
                 // Guardar los cambios como pendientes
                 $form->update([
-                    'pending_changes' => $formData,
+                    'pending_changes' => $allChanges,
                     'has_pending_changes' => true,
                     'pending_changes_at' => now(),
                     'pending_changes_by' => $user->id
@@ -208,6 +230,16 @@ class ApplicationFormController extends Controller
             }
             
             // Si es admin o una planilla no activa, actualizar directamente
+            // (no debería haber campos client_ aquí, pero filtrarlos por seguridad)
+            $formDataInput = array_filter($requestData, function($key) {
+                return !str_starts_with($key, 'client_');
+            }, ARRAY_FILTER_USE_KEY);
+            
+            $data = ApplicationFormData::from($formDataInput);
+            $formData = array_filter($data->toArray(), function($value) {
+                return $value !== null;
+            });
+            
             $form->update($formData);
             
             return response()->json([
@@ -312,9 +344,33 @@ class ApplicationFormController extends Controller
         }
 
         try {
-            // Aplicar los cambios pendientes
-            $pendingChanges = $form->pending_changes;
-            $form->update($pendingChanges);
+            // Guardar el agente que propuso los cambios antes de limpiarlos
+            $agentId = $form->pending_changes_by;
+            $changesData = $form->pending_changes;
+            
+            // Separar cambios del client (prefijo client_) de cambios de la planilla
+            $clientChanges = [];
+            $formChanges = [];
+            
+            foreach ($changesData as $key => $value) {
+                if (str_starts_with($key, 'client_')) {
+                    // Remover prefijo client_ y guardar para actualizar el usuario
+                    $clientKey = str_replace('client_', '', $key);
+                    $clientChanges[$clientKey] = $value;
+                } else {
+                    $formChanges[$key] = $value;
+                }
+            }
+            
+            // Aplicar los cambios de la planilla
+            if (!empty($formChanges)) {
+                $form->update($formChanges);
+            }
+            
+            // Aplicar los cambios del cliente si hay
+            if (!empty($clientChanges) && $form->client) {
+                $form->client->update($clientChanges);
+            }
             
             // Limpiar los cambios pendientes
             $form->update([
@@ -324,6 +380,22 @@ class ApplicationFormController extends Controller
                 'pending_changes_by' => null,
                 'reviewed_by' => $user->id,
                 'reviewed_at' => now()
+            ]);
+
+            // ✅ Registrar en el historial
+            \App\Models\ApplicationFormHistory::create([
+                'application_form_id' => $form->id,
+                'action' => \App\Models\ApplicationFormHistory::ACTION_PENDING_APPROVED,
+                'user_id' => $user->id,
+                'comment' => 'Cambios aprobados por ' . $user->name,
+                'metadata' => [
+                    'agent_id' => $agentId,
+                    'approved_by' => $user->name,
+                    'approved_at' => now()->toDateTimeString(),
+                    'changes' => $changesData,
+                    'client_changes' => $clientChanges,
+                    'form_changes' => $formChanges
+                ]
             ]);
 
             return response()->json([
@@ -364,15 +436,33 @@ class ApplicationFormController extends Controller
         ]);
 
         try {
-            // Limpiar los cambios pendientes sin aplicarlos
+            // Guardar el agente que propuso los cambios antes de limpiarlos
+            $agentId = $form->pending_changes_by;
+            
+            // Actualizar la planilla con el rechazo
             $form->update([
                 'pending_changes' => null,
                 'has_pending_changes' => false,
                 'pending_changes_at' => null,
                 'pending_changes_by' => null,
                 'status_comment' => 'Cambios rechazados: ' . $request->rejection_reason,
+                'rejection_reason' => $request->rejection_reason, // ✅ Campo dedicado
+                'rejected_at' => now(), // ✅ Timestamp del rechazo
                 'reviewed_by' => $user->id,
                 'reviewed_at' => now()
+            ]);
+
+            // ✅ Registrar en el historial
+            \App\Models\ApplicationFormHistory::create([
+                'application_form_id' => $form->id,
+                'action' => \App\Models\ApplicationFormHistory::ACTION_PENDING_REJECTED,
+                'user_id' => $user->id,
+                'comment' => $request->rejection_reason,
+                'metadata' => [
+                    'agent_id' => $agentId,
+                    'rejected_by' => $user->name,
+                    'rejected_at' => now()->toDateTimeString()
+                ]
             ]);
 
             return response()->json([
@@ -402,15 +492,86 @@ class ApplicationFormController extends Controller
             ], 403);
         }
 
-        $request->validate([
-            'document' => 'required|file|mimes:jpeg,jpg,png,pdf,mp3,wma|max:5120', // 5MB max, incluye audio
-            'document_type' => 'nullable|string|max:100'
+        // Validar que el archivo exista y sea válido
+        $serverLimitValue = ini_get('upload_max_filesize') ?: '0';
+        $serverLimitBytes = $this->convertIniSizeToBytes($serverLimitValue);
+        $serverLimitLabel = $serverLimitBytes > 0 ? $this->formatFileSize($serverLimitBytes) : $serverLimitValue;
+
+        // Log para debugging
+        \Log::info('Upload limits check', [
+            'upload_max_filesize' => $serverLimitValue,
+            'post_max_size' => ini_get('post_max_size'),
+            'memory_limit' => ini_get('memory_limit'),
+            'max_file_uploads' => ini_get('max_file_uploads'),
+            'hasFile' => $request->hasFile('document'),
+            'filesError' => $_FILES['document']['error'] ?? 'no error key',
+            'filesSize' => $_FILES['document']['size'] ?? 'no size key'
         ]);
 
+        if (!$request->hasFile('document')) {
+            $fileError = $_FILES['document']['error'] ?? null;
+            if (in_array($fileError, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+                return response()->json([
+                    'error' => 'El archivo excede el límite configurado en el servidor (' . $serverLimitLabel . ').'
+                ], 422);
+            }
+
+            return response()->json([
+                'error' => 'No se recibió el archivo a subir. Intenta nuevamente.'
+            ], 422);
+        }
+
+        $file = $request->file('document');
+
+        if (!$file->isValid()) {
+            $errorMessages = [
+                UPLOAD_ERR_INI_SIZE => 'El archivo excede el límite configurado en el servidor (' . $serverLimitLabel . ').',
+                UPLOAD_ERR_FORM_SIZE => 'El archivo excede el tamaño permitido por el formulario.',
+                UPLOAD_ERR_PARTIAL => 'El archivo se subió parcialmente. Intenta nuevamente.',
+                UPLOAD_ERR_NO_FILE => 'No se recibió ningún archivo en la solicitud.',
+                UPLOAD_ERR_NO_TMP_DIR => 'Falta la carpeta temporal en el servidor. Contacta al administrador.',
+                UPLOAD_ERR_CANT_WRITE => 'No se pudo escribir el archivo en el disco del servidor.',
+                UPLOAD_ERR_EXTENSION => 'Una extensión del servidor detuvo la subida del archivo.'
+            ];
+
+            $errorCode = $file->getError();
+
+            return response()->json([
+                'error' => $errorMessages[$errorCode] ?? 'No se pudo completar la carga del archivo. Intenta nuevamente.'
+            ], 422);
+        }
+
+        $request->validate([
+            'document_type' => 'nullable|string|max:100'
+        ]);
+        
+        // Validar extensión y MIME type
+        $extension = strtolower($file->getClientOriginalExtension());
+        $mimeType = $file->getMimeType();
+        $allowedExtensions = ['jpeg', 'jpg', 'png', 'pdf', 'mp3', 'wma'];
+        $allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf', 'audio/mpeg', 'audio/mp3', 'audio/x-ms-wma'];
+        
+        if (!in_array($extension, $allowedExtensions) && !in_array($mimeType, $allowedMimes)) {
+            return response()->json([
+                'error' => 'Tipo de archivo no permitido. Solo: PDF, JPG, PNG, MP3, WMA'
+            ], 422);
+        }
+        
+        // Determinar si es audio
+        $isAudio = str_starts_with($mimeType, 'audio/') || in_array($extension, ['mp3', 'wma']);
+        
+        // Validar tamaño según tipo de archivo
+        $maxSize = $isAudio ? 15360 : 5120; // 15MB para audio, 5MB para otros (en KB)
+        $maxSizeLabel = $isAudio ? '15MB' : '5MB';
+        
+        if ($file->getSize() > ($maxSize * 1024)) {
+            return response()->json([
+                'error' => "El archivo es demasiado grande. Máximo {$maxSizeLabel} para " . ($isAudio ? 'audios' : 'imágenes/PDFs')
+            ], 422);
+        }
+
         try {
-            $file = $request->file('document');
             $originalName = $file->getClientOriginalName();
-            $extension = $file->getClientOriginalExtension();
             $fileName = time() . '_' . uniqid() . '.' . $extension;
             
             // Guardar en storage/public/application_documents
@@ -458,6 +619,35 @@ class ApplicationFormController extends Controller
                 'error' => 'Error al subir el documento: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Convert ini size notation (e.g. 2M, 1G) to bytes.
+     */
+    private function convertIniSizeToBytes(string $size): int
+    {
+        $size = trim($size);
+
+        if ($size === '') {
+            return 0;
+        }
+
+        $unit = strtolower(substr($size, -1));
+        $number = (float) $size;
+
+        switch ($unit) {
+            case 'g':
+                $number *= 1024;
+                // no break
+            case 'm':
+                $number *= 1024;
+                // no break
+            case 'k':
+                $number *= 1024;
+                break;
+        }
+
+        return (int) round($number);
     }
 
     /**
@@ -644,4 +834,34 @@ class ApplicationFormController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Get history of changes for an application form (solo admin y agent creador).
+     */
+    public function getHistory(Request $request, string $application_form)
+    {
+        $user = $request->user();
+        $form = $this->findForm($application_form);
+
+        // Check permissions: admin o agent creador pueden ver el historial
+        if (!$user->isAdmin() && $form->agent_id !== $user->id) {
+            return response()->json([
+                'error' => 'No autorizado para ver el historial'
+            ], 403);
+        }
+
+        try {
+            $history = $form->history()->with('user:id,name,email')->get();
+
+            return response()->json([
+                'history' => $history
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Error al obtener el historial: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }
+
