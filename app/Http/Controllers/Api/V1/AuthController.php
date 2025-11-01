@@ -247,7 +247,7 @@ class AuthController extends Controller
                 'seconds_remaining' => $secondsRemaining,
                 'expires_at' => $expiresAt->toIso8601String(),
                 'created_at' => $createdAt->toIso8601String(),
-                'should_warn' => $secondsRemaining <= 30 // Advertir en los últimos 30 segundos
+                'should_warn' => $secondsRemaining <= 180 // Advertir en los últimos 3 minutos (180 segundos)
             ]);
         } catch (\Exception $e) {
             \Log::error('Error al verificar expiración del token:', [
