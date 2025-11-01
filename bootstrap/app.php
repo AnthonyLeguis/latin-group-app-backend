@@ -12,7 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        //
+        // Middleware para actualizar last_activity en rutas autenticadas
+        $middleware->alias([
+            'update.last.activity' => \App\Http\Middleware\UpdateLastActivity::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

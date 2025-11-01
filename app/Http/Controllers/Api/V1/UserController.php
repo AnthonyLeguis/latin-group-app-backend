@@ -109,10 +109,57 @@ class UserController extends Controller
             'active_forms' => ApplicationForm::where('status', ApplicationForm::STATUS_ACTIVE)->count(),
             'inactive_forms' => ApplicationForm::where('status', ApplicationForm::STATUS_INACTIVE)->count(),
             'rejected_forms' => ApplicationForm::where('status', ApplicationForm::STATUS_REJECTED)->count(),
+            'online_agents' => User::where('type', 'agent')
+                ->where('last_activity', '>=', now()->subMinutes(5))
+                ->count(),
             'recent_users' => User::orderBy('created_at', 'desc')->take(5)->get(),
         ];
 
         return response()->json($stats);
+    }
+
+    /**
+     * Obtener lista de agentes conectados (solo admin)
+     * Considera "conectado" si last_activity < 5 minutos
+     */
+    public function onlineAgents(Request $request): JsonResponse
+    {
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        $onlineThreshold = now()->subMinutes(5);
+        $totalAgents = User::where('type', 'agent')->count();
+
+        $agents = User::where('type', 'agent')
+            ->select('id', 'name', 'email', 'avatar', 'last_activity', 'created_at')
+            ->orderByRaw('last_activity IS NULL, last_activity DESC')
+            ->get()
+            ->map(function ($agent) use ($onlineThreshold) {
+                $isOnline = $agent->last_activity && $agent->last_activity >= $onlineThreshold;
+                
+                return [
+                    'id' => $agent->id,
+                    'name' => $agent->name,
+                    'email' => $agent->email,
+                    'avatar' => $agent->avatar,
+                    'last_activity' => $agent->last_activity,
+                    'is_online' => $isOnline,
+                    'minutes_ago' => $agent->last_activity 
+                        ? now()->diffInMinutes($agent->last_activity)
+                        : null,
+                ];
+            });
+
+        $onlineCount = $agents->where('is_online', true)->count();
+
+        return response()->json([
+            'total_agents' => $totalAgents,
+            'online_agents' => $onlineCount,
+            'offline_agents' => $totalAgents - $onlineCount,
+            'agents' => $agents,
+            'last_updated' => now()->toIso8601String(),
+        ]);
     }
 
     /**

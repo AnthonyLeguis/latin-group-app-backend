@@ -28,7 +28,7 @@ Route::post('v1/auth/forgot-password', [AuthController::class, 'forgotPassword']
 Route::post('v1/auth/reset-password', [AuthController::class, 'resetPassword']);
 
 // Rutas protegidas por autenticación
-Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
+Route::middleware(['auth:sanctum', 'update.last.activity'])->prefix('v1')->group(function () {
     // Registro de usuarios (requiere autenticación)
     Route::post('auth/register', [AuthController::class, 'register']);
     
@@ -44,6 +44,7 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     // Admin: CRUD completo para admin, agent y client
     // Agent: CRUD solo para clients que él creó
     Route::get('users/stats', [UserController::class, 'stats']); // Estadísticas generales
+    Route::get('users/online-agents', [UserController::class, 'onlineAgents']); // Agentes conectados (solo admin)
     Route::get('users/agents-report', [UserController::class, 'agentsReport']); // Reporte de agentes con clients
     Route::get('users/pending-forms', [UserController::class, 'pendingForms']); // Planillas pendientes (solo admin)
     Route::apiResource('users', UserController::class)->except(['edit', 'create']);

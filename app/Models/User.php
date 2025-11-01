@@ -22,6 +22,7 @@ class User extends Authenticatable
         'created_by_admin',
         'updated_by',
         'agent_id', // Agente asignado al cliente
+        'last_activity', // Última actividad del usuario
     ];
 
     protected $hidden = [
@@ -32,6 +33,7 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'last_activity' => 'datetime',
     ];
 
     // Métodos para verificar tipo de usuario
