@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Data\Auth\RegisterUserData;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\ApplicationForm;
 use App\Policies\UserPolicy;
 use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
@@ -104,6 +105,10 @@ class UserController extends Controller
             'total_admins' => User::where('type', 'admin')->count(),
             'total_agents' => User::where('type', 'agent')->count(),
             'total_clients' => User::where('type', 'client')->count(),
+            'pending_forms' => ApplicationForm::where('status', ApplicationForm::STATUS_PENDING)->count(),
+            'active_forms' => ApplicationForm::where('status', ApplicationForm::STATUS_ACTIVE)->count(),
+            'inactive_forms' => ApplicationForm::where('status', ApplicationForm::STATUS_INACTIVE)->count(),
+            'rejected_forms' => ApplicationForm::where('status', ApplicationForm::STATUS_REJECTED)->count(),
             'recent_users' => User::orderBy('created_at', 'desc')->take(5)->get(),
         ];
 
