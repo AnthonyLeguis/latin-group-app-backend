@@ -110,7 +110,7 @@ class UserController extends Controller
             'inactive_forms' => ApplicationForm::where('status', ApplicationForm::STATUS_INACTIVE)->count(),
             'rejected_forms' => ApplicationForm::where('status', ApplicationForm::STATUS_REJECTED)->count(),
             'online_agents' => User::where('type', 'agent')
-                ->where('last_activity', '>=', now()->subMinutes(5))
+                ->where('last_activity', '>=', now()->subMinutes(1)) // 1 minuto
                 ->count(),
             'recent_users' => User::orderBy('created_at', 'desc')->take(5)->get(),
         ];
@@ -120,7 +120,7 @@ class UserController extends Controller
 
     /**
      * Obtener lista de agentes conectados (solo admin)
-     * Considera "conectado" si last_activity < 5 minutos
+     * Considera "conectado" si last_activity < 1 minuto
      */
     public function onlineAgents(Request $request): JsonResponse
     {
@@ -128,7 +128,7 @@ class UserController extends Controller
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
-        $onlineThreshold = now()->subMinutes(5);
+        $onlineThreshold = now()->subMinutes(1); // 1 minuto
         $totalAgents = User::where('type', 'agent')->count();
 
         $agents = User::where('type', 'agent')

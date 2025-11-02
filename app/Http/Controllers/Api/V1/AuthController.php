@@ -7,7 +7,9 @@ use App\Data\Auth\RegisterUserData;
 use App\Data\Auth\ForgotPasswordData;
 use App\Data\Auth\ResetPasswordData;
 use App\Data\Auth\ChangePasswordData;
+use App\Events\AgentActivityUpdated;
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Services\AuthService;
 use Illuminate\Http\Request;
 
@@ -23,6 +25,12 @@ class AuthController extends Controller
 
         try {
             $result = $this->authService->login($data);
+            
+            // Disparar evento de actividad si es un agente
+            if (isset($result['user']) && $result['user']['type'] === 'agent') {
+                $this->broadcastAgentActivity();
+            }
+            
             return response()->json($result);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 401);
@@ -271,12 +279,29 @@ class AuthController extends Controller
                 ], 401);
             }
 
-            // Eliminar el token actual
-            $request->user()->currentAccessToken()->delete();
+            $user = $request->user();
+
+            // Marcar como desconectado estableciendo last_activity en el pasado
+            $user->update([
+                'last_activity' => now()->subMinutes(10) // 10 minutos en el pasado
+            ]);
+
+            // Disparar evento de actividad si es un agente ANTES de eliminar el token
+            if ($user->type === 'agent') {
+                \Log::info('🔔 Disparando evento de logout para agente:', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'last_activity' => $user->last_activity
+                ]);
+                $this->broadcastAgentActivity();
+            }
+
+            // Eliminar el token actual (después del broadcast)
+            $user->currentAccessToken()->delete();
 
             \Log::info('Sesión cerrada exitosamente:', [
-                'user_id' => $request->user()->id,
-                'email' => $request->user()->email
+                'user_id' => $user->id,
+                'email' => $user->email
             ]);
 
             return response()->json([
@@ -285,5 +310,25 @@ class AuthController extends Controller
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Broadcast agent activity stats to all connected clients
+     */
+    private function broadcastAgentActivity(): void
+    {
+        $onlineThreshold = now()->subMinutes(1);
+        
+        $stats = [
+            'online_agents' => User::where('type', 'agent')
+                ->where('last_activity', '>=', $onlineThreshold)
+                ->count(),
+            'total_agents' => User::where('type', 'agent')->count(),
+            'timestamp' => now()->toIso8601String()
+        ];
+        
+        \Log::info('📊 Broadcasting agent stats:', $stats);
+        
+        broadcast(new AgentActivityUpdated($stats));
     }
 }
