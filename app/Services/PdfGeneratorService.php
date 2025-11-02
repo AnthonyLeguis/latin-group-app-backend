@@ -164,13 +164,13 @@ class PdfGeneratorService
         // Obtener nombre del agente de la relación (siempre actualizado)
         $agentName = $form->agent ? $form->agent->name : $form->agent_name;
         
-        $texto = "Le enviamos este mensaje en nombre de Latin Group Insurance para confirmar su autorización al Asesor {$agentName} a trabajar con el NPN 19903181 / 19606203. De {$form->client->name} para acceder y utilizar la información confidencial que usted ha proporcionado para el período 2025. Cabe destacar que la explicación de su plan ya ha sido completada y verificada tanto por usted como por su asesor.";
+        $texto = "Le enviamos este mensaje en nombre de Latin Group Insurance para confirmar su autorización al Asesor {$agentName} a trabajar con el NPN 19903181 / 19606203. De {$form->client->name} para acceder y utilizar la información confidencial que usted ha proporcionado para el período 2026. Cabe destacar que la explicación de su plan ya ha sido completada y verificada tanto por usted como por su asesor.";
         $pdf->MultiCell(0, 5, $texto, 0, 'L');
 
         // Plan (sin justificación)
         if ($form->insurance_plan) {
             $pdf->SetY($pdf->GetY() + 3);
-            $pdf->MultiCell(0, 5, "Su plan para el año 2025 es: {$form->insurance_plan}.", 0, 'L');
+            $pdf->MultiCell(0, 5, "Su plan para el año 2026 es: {$form->insurance_plan}.", 0, 'L');
         }
 
         // Razones de uso
@@ -195,7 +195,7 @@ class PdfGeneratorService
         $pdf->MultiCell(0, 5, "Entiendo que los agentes mencionados no utilizarán ni compartirán mi información personal para fines distintos a los especificados anteriormente. Asimismo, se comprometen a mantener la confidencialidad y seguridad de mi información en todo momento.", 0, 'L');
 
         // Footer centrado en la parte inferior de la página
-        $this->addPageFooter($pdf);
+        $this->addPageFooter($pdf, $form->client->name);
     }
 
     /**
@@ -210,8 +210,8 @@ class PdfGeneratorService
             'Fecha de Nacimiento:' => $form->dob?->format('d/m/Y'),
             'Correo Electrónico:' => $form->email,
             'Número de Teléfono:' => $form->phone,
-            'Salario Mensual:' => $form->final_cost ?? 'N/A',
-            'Plan 2025:' => $form->insurance_plan ?? 'N/A',
+            'Salario Mensual:' => $form->wages ?? 'N/A',
+            'Plan 2026:' => $form->insurance_plan ?? 'N/A',
             'Estado:' => $form->state ?? 'N/A'
         ];
 
@@ -233,10 +233,16 @@ class PdfGeneratorService
     /**
      * Agregar pie de página centrado en la parte inferior
      */
-    private function addPageFooter(TCPDF $pdf): void
+    private function addPageFooter(TCPDF $pdf, string $clientName): void
     {
         // Posicionar el footer a 35mm del borde inferior (más abajo)
-        $pdf->SetY(-35);
+        $pdf->SetY(-45);
+        
+        // Firma digital del cliente
+        $this->applyArialFont($pdf, 12, 'I');
+        $pdf->Cell(0, 5, 'Este documento ha sido autorizado por: ' . $clientName, 0, 1, 'C');
+        
+        $pdf->Ln(7); 
         
         $this->applyArialFont($pdf, 12, 'B');
         $pdf->Cell(0, 5, 'Atentamente,', 0, 1, 'C');
@@ -272,16 +278,56 @@ class PdfGeneratorService
         $this->applyArialFont($pdf, 12, 'B');
         $pdf->Cell(0, 5, 'HEALTH INSURANCE MARKETPLACE DEPARTMENT OF HEALTH AND HUMAN SERVICES', 0, 1, 'C');
 
+        // Calcular ingresos mensuales y anuales basados en la frecuencia
+        $monthlySalary = $this->calculateMonthlySalary($form->wages, $form->wages_frequency);
+        $annualSalary = $this->calculateAnnualSalary($form->wages, $form->wages_frequency);
+
         $pdf->SetY($pdf->GetY() + 5);
         $this->applyArialFont($pdf, 12);
         $pdf->MultiCell(0, 5,
             "A quien pueda interesar:\n\n" .
             "Yo, {$form->client->name}, fecha de nacimiento: {$form->dob?->format('d/m/Y')}\n" .
             "Con numero de social security: 111\n\n" .
-            "Hago constar por medio de la presente que trabajo por cuenta propia y me comprometo y es mi voluntad, declarar alrededor de 1,00 al mes y 12,00 ingresos anuales para el 2025",
+            "Hago constar por medio de la presente que trabajo por cuenta propia y me comprometo y es mi voluntad, declarar alrededor de " . number_format($monthlySalary, 2) . " al mes y " . number_format($annualSalary, 2) . " ingresos anuales para el 2026.",
             0, 'L'
         );
 
+    }
+
+    /**
+     * Calcular salario mensual basado en la frecuencia de pago
+     */
+    private function calculateMonthlySalary(?float $wages, ?string $frequency): float
+    {
+        if (!$wages || !$frequency) {
+            return 0;
+        }
+
+        return match(strtolower(trim($frequency))) {
+            'semanal' => $wages * 4,
+            'quincenal' => $wages * 2,
+            'mensual' => $wages,
+            'anual' => $wages / 12,
+            default => $wages
+        };
+    }
+
+    /**
+     * Calcular salario anual basado en la frecuencia de pago
+     */
+    private function calculateAnnualSalary(?float $wages, ?string $frequency): float
+    {
+        if (!$wages || !$frequency) {
+            return 0;
+        }
+
+        return match(strtolower(trim($frequency))) {
+            'semanal' => $wages * 52,
+            'quincenal' => $wages * 26,
+            'mensual' => $wages * 12,
+            'anual' => $wages,
+            default => $wages * 12
+        };
     }
 
     /**
