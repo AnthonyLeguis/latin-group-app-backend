@@ -165,6 +165,7 @@ class UserController extends Controller
 
     /**
      * Obtener reporte detallado de agentes con sus clientes (solo admin)
+     * Incluye tanto agents como admins que tengan clientes con application forms
      */
     public function agentsReport(Request $request): JsonResponse
     {
@@ -172,7 +173,7 @@ class UserController extends Controller
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
-        // Obtener todos los agentes con sus clientes (tanto los que crearon como los asignados)
+        // Obtener todos los agentes (type = 'agent') con sus clientes
         $agents = User::where('type', 'agent')
             ->with([
                 'createdUsers' => function ($query) {
@@ -212,12 +213,53 @@ class UserController extends Controller
                     ->values();
 
                 $agent->setRelation('createdUsers', $combinedClients);
-                // Remover relación para evitar devolver dos veces los mismos clientes
                 $agent->setRelation('assignedClients', collect());
                 $agent->clients_count = $combinedClients->count();
 
                 return $agent;
             });
+
+        // Obtener admins que tengan clientes donde ellos son el agent_id en application_forms
+        $adminsWithClients = \App\Models\ApplicationForm::select('agent_id')
+            ->whereHas('agent', function ($q) {
+                $q->where('type', 'admin');
+            })
+            ->distinct()
+            ->pluck('agent_id');
+
+        $admins = User::where('type', 'admin')
+            ->whereIn('id', $adminsWithClients)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($admin) {
+                // Obtener solo los clientes que tienen application_forms donde este admin es el agent_id
+                $clientIds = \App\Models\ApplicationForm::where('agent_id', $admin->id)
+                    ->pluck('client_id')
+                    ->unique();
+
+                $clients = User::whereIn('id', $clientIds)
+                    ->where('type', 'client')
+                    ->with([
+                        'applicationFormsAsClient' => function ($q) use ($admin) {
+                            $q->where('agent_id', $admin->id)
+                              ->with(['reviewedBy', 'pendingChangesBy'])
+                              ->orderBy('created_at', 'desc');
+                        },
+                        'createdByAdmin'
+                    ])
+                    ->orderBy('created_at', 'desc')
+                    ->select('id', 'name', 'email', 'created_by', 'created_by_admin', 'created_at', 'updated_at', 'agent_id')
+                    ->get();
+
+                $admin->setRelation('createdUsers', $clients);
+                $admin->setRelation('assignedClients', collect());
+                $admin->clients_count = $clients->count();
+
+                return $admin;
+            });
+
+        // Combinar agents y admins en una sola colección
+        $allAgentsAndAdmins = $agents->concat($admins)->sortByDesc('created_at')->values();
 
         // Obtener planillas con cambios pendientes de aprobación
         $pendingChangesForms = \App\Models\ApplicationForm::where('has_pending_changes', true)
@@ -226,8 +268,8 @@ class UserController extends Controller
             ->get();
 
         return response()->json([
-            'agents' => $agents,
-            'total_agents' => $agents->count(),
+            'agents' => $allAgentsAndAdmins, // Ahora incluye agents y admins
+            'total_agents' => $allAgentsAndAdmins->count(),
             'total_clients' => User::where('type', 'client')->count(),
             'pending_changes_forms' => $pendingChangesForms,
             'total_pending_changes' => $pendingChangesForms->count(),
