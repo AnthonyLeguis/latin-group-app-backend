@@ -7,6 +7,7 @@ use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class UpdateLastActivity
@@ -35,10 +36,18 @@ class UpdateLastActivity
             if (!Cache::has($cacheKey)) {
                 // Calcular estadísticas
                 $stats = $this->getStats();
-                
-                // Disparar evento
-                broadcast(new AgentActivityUpdated($stats));
-                
+
+                try {
+                    // Disparar evento
+                    broadcast(new AgentActivityUpdated($stats));
+                } catch (\Throwable $e) {
+                    Log::error('❌ Error al transmitir evento (middleware):', [
+                        'user_id' => $user->id,
+                        'message' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                }
+
                 // Cachear por 5 segundos
                 Cache::put($cacheKey, true, 5);
             }

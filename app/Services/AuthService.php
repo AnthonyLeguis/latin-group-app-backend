@@ -37,6 +37,25 @@ class AuthService
             throw new \Exception('Contraseña inválida');
         }
 
+        // Si es un agente, registrar el inicio de sesión y la actividad
+        if ($user->type === 'agent') {
+            $user->update([
+                'last_activity' => now(),
+                'current_session_start' => now()
+            ]);
+            
+            \Log::info('🔔 Agente inició sesión:', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'session_start' => now()->toIso8601String()
+            ]);
+        } else {
+            // Para admins y clientes, solo actualizar last_activity
+            $user->update([
+                'last_activity' => now()
+            ]);
+        }
+
         $token = $user->createToken('API Token')->plainTextToken;
 
         return [
@@ -104,11 +123,25 @@ class AuthService
             ]);
 
             // Actualizar información de Google si es necesario
-            $user->update([
+            $updateData = [
                 'google_id' => $googleUser->getId(),
                 'avatar' => $googleUser->getAvatar(),
                 'name' => $googleUser->getName(), // Actualizar nombre si cambió
-            ]);
+                'last_activity' => now(), // Actualizar actividad
+            ];
+
+            // Si es un agente, registrar el inicio de sesión
+            if ($user->type === 'agent') {
+                $updateData['current_session_start'] = now();
+                
+                \Log::info('🔔 Agente inició sesión (Google):', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'session_start' => now()->toIso8601String()
+                ]);
+            }
+
+            $user->update($updateData);
 
             \Log::info('✅ Usuario actualizado con información de Google');
 

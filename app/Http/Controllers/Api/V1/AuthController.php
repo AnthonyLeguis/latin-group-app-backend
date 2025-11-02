@@ -26,12 +26,11 @@ class AuthController extends Controller
         try {
             $result = $this->authService->login($data);
             
-            // Iniciar sesión y disparar evento si es un agente
+            // Si es un agente, hacer broadcast de la actividad
             if (isset($result['user']) && $result['user']['type'] === 'agent') {
-                // Marcar el inicio de la sesión actual
-                $user = User::find($result['user']['id']);
-                $user->update([
-                    'current_session_start' => now()
+                \Log::info('🔔 Disparando broadcast de login para agente:', [
+                    'user_id' => $result['user']['id'],
+                    'email' => $result['user']['email']
                 ]);
                 
                 $this->broadcastAgentActivity();
@@ -39,6 +38,11 @@ class AuthController extends Controller
             
             return response()->json($result);
         } catch (\Exception $e) {
+            \Log::error('❌ Error en login:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json(['error' => $e->getMessage()], 401);
         }
     }
@@ -86,6 +90,16 @@ class AuthController extends Controller
                 'user_email' => $result['user']['email'],
                 'user_type' => $result['user']['type']
             ]);
+
+            // Si es un agente, hacer broadcast de la actividad
+            if ($result['user']['type'] === 'agent') {
+                \Log::info('🔔 Disparando broadcast de Google login para agente:', [
+                    'user_id' => $result['user']['id'],
+                    'email' => $result['user']['email']
+                ]);
+                
+                $this->broadcastAgentActivity();
+            }
 
             // Redirigir al frontend con el token en la URL
             $frontendUrl = config('services.frontend.url') . '/dashboard';
@@ -352,7 +366,14 @@ class AuthController extends Controller
         ];
         
         \Log::info('📊 Broadcasting agent stats:', $stats);
-        
-        broadcast(new AgentActivityUpdated($stats));
+
+        try {
+            broadcast(new AgentActivityUpdated($stats));
+        } catch (\Throwable $e) {
+            \Log::error('❌ Error al transmitir evento de agentes:', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
     }
 }
