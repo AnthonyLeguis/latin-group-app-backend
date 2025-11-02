@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api\V1;
 use App\Data\Application\ApplicationFormData;
 use App\Http\Controllers\Controller;
 use App\Models\ApplicationForm;
+use App\Models\ApplicationDocument;
 use App\Models\User;
+use App\Services\PdfGeneratorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -135,9 +137,51 @@ class ApplicationFormController extends Controller
             // Generar token de confirmación con expiración de 3 días
             $token = $form->generateConfirmationToken();
 
+            // Generar PDF completo de la planilla automáticamente
+            try {
+                $pdfService = new PdfGeneratorService();
+                $pdfPath = $pdfService->generateApplicationPdf($form);
+                
+                // Guardar el PDF en la misma ubicación que los documentos cargados (application_documents)
+                $pdfFileName = "Planilla_Aplicacion_{$form->client->name}_{$form->id}.pdf";
+                $publicPdfPath = "application_documents/{$pdfFileName}";
+                
+                // Copiar desde la ubicación temporal a la ubicación pública
+                $tempPath = storage_path("app/{$pdfPath}");
+                $publicFullPath = storage_path("app/public/{$publicPdfPath}");
+                
+                // Asegurar que el directorio existe
+                if (!file_exists(dirname($publicFullPath))) {
+                    mkdir(dirname($publicFullPath), 0755, true);
+                }
+                
+                // Copiar el archivo
+                copy($tempPath, $publicFullPath);
+                $fileSize = filesize($publicFullPath);
+                
+                // Crear documento en la base de datos
+                ApplicationDocument::create([
+                    'application_form_id' => $form->id,
+                    'uploaded_by' => $user->id,
+                    'original_name' => $pdfFileName,
+                    'file_name' => $pdfFileName,
+                    'file_path' => $publicPdfPath,
+                    'mime_type' => 'application/pdf',
+                    'file_size' => $fileSize,
+                    'document_type' => 'application_form'
+                ]);
+
+                // Opcional: eliminar el archivo temporal de pdfs/
+                @unlink($tempPath);
+                
+            } catch (\Exception $e) {
+                \Log::error('Error al generar PDF de aplicación: ' . $e->getMessage());
+                // No fallar la creación de la planilla si falla el PDF
+            }
+
             return response()->json([
                 'message' => 'Planilla de aplicación creada exitosamente',
-                'form' => $form->load(['client', 'agent']),
+                'form' => $form->load(['client', 'agent', 'documents']),
                 'confirmation_token' => $token,
                 'token_expires_at' => $form->token_expires_at,
                 'confirmation_link' => url("/confirm/{$token}")

@@ -60,6 +60,48 @@ class PdfGeneratorService
     }
 
     /**
+     * Generar PDF completo con todos los datos de la planilla
+     */
+    public function generateApplicationPdf(ApplicationForm $form): string
+    {
+        // Crear directorio si no existe
+        $clientDir = "pdfs/{$form->id}";
+        if (!Storage::disk('local')->exists($clientDir)) {
+            Storage::disk('local')->makeDirectory($clientDir);
+        }
+
+        // Nombre del archivo
+        $filename = "application_{$form->id}.pdf";
+        $filepath = "{$clientDir}/{$filename}";
+
+        // Inicializar TCPDF
+        $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+        
+        // Configuración del PDF
+        $pdf->SetCreator('Latin Group Insurance');
+        $pdf->SetAuthor('Latin Group Insurance');
+        $pdf->SetTitle('Planilla de Aplicación');
+        $pdf->SetSubject('Datos de Aplicación de Cliente');
+        $pdf->SetDefaultMonospacedFont('courier');
+        $pdf->SetMargins(15, 15, 15);
+        $pdf->SetAutoPageBreak(true, 15);
+        $this->applyArialFont($pdf, 12);
+
+        // PÁGINA 1: Datos principales
+        $pdf->AddPage();
+        $this->addHeaderWithLogo($pdf);
+        $pdf->setCellHeightRatio(1.3);
+        $this->addApplicationDataPage($pdf, $form);
+
+        // Guardar PDF
+        $fullPath = storage_path("app/{$filepath}");
+        $pdf->Output($fullPath, 'F');
+
+        // Retornar la ruta relativa al disco 'local' (storage/app/)
+        return $filepath;
+    }
+
+    /**
      * Aplicar fuente Arial (o fallback a Helvetica si no está disponible)
      */
     private function applyArialFont(TCPDF $pdf, int $size = 12, string $style = ''): void
@@ -292,6 +334,156 @@ class PdfGeneratorService
             0, 'L'
         );
 
+    }
+
+    /**
+     * Agregar página con todos los datos de la aplicación
+     */
+    private function addApplicationDataPage(TCPDF $pdf, ApplicationForm $form): void
+    {
+        $this->applyArialFont($pdf, 14, 'B');
+        $pdf->Cell(0, 10, 'Planilla de Aplicación - Datos Completos', 0, 1, 'C');
+        $pdf->SetY($pdf->GetY() + 3);
+
+        // Información del Cliente y Agente
+        $this->addSectionTitle($pdf, 'Información del Cliente');
+        $this->addFieldRow($pdf, 'Nombre del Cliente', $form->client->name ?? 'N/A');
+        $this->addFieldRow($pdf, 'Agente Asignado', $form->agent_name ?? 'N/A');
+        $this->addFieldRow($pdf, 'Estado', $form->status ?? 'N/A');
+        $this->addFieldRow($pdf, 'Confirmado', $form->confirmed ? 'Sí' : 'No');
+
+        $pdf->Ln(3);
+
+        // Datos del Aplicante
+        $this->addSectionTitle($pdf, 'Datos del Aplicante');
+        $this->addFieldRow($pdf, 'Nombre Completo', $form->applicant_name ?? 'N/A');
+        $this->addFieldRow($pdf, 'Fecha de Nacimiento', $form->dob?->format('d/m/Y') ?? 'N/A');
+        $this->addFieldRow($pdf, 'Género', $form->gender === 'M' ? 'Masculino' : ($form->gender === 'F' ? 'Femenino' : 'N/A'));
+        $this->addFieldRow($pdf, 'Estatus Legal', $form->legal_status ?? 'N/A');
+        $this->addFieldRow($pdf, 'Número de Documento', $form->document_number ?? 'N/A');
+        $this->addFieldRow($pdf, 'SSN', $form->ssn ?? 'N/A');
+        $this->addFieldRow($pdf, 'Dirección', $form->address ?? 'N/A');
+        $this->addFieldRow($pdf, 'Apt/Unidad', $form->unit_apt ?? 'N/A');
+        $this->addFieldRow($pdf, 'Ciudad', $form->city ?? 'N/A');
+        $this->addFieldRow($pdf, 'Estado', $form->state ?? 'N/A');
+        $this->addFieldRow($pdf, 'Código Postal', $form->zip_code ?? 'N/A');
+        $this->addFieldRow($pdf, 'Teléfono', $form->phone ?? 'N/A');
+        $this->addFieldRow($pdf, 'Teléfono 2', $form->phone2 ?? 'N/A');
+        $this->addFieldRow($pdf, 'Email', $form->email ?? 'N/A');
+
+        // Nueva página si es necesario
+        if ($pdf->GetY() > 240) {
+            $pdf->AddPage();
+            $this->addHeaderWithLogo($pdf);
+        } else {
+            $pdf->Ln(3);
+        }
+
+        // Información de Empleo
+        $this->addSectionTitle($pdf, 'Información de Empleo');
+        $this->addFieldRow($pdf, 'Tipo de Empleo', $form->employment_type ?? 'N/A');
+        $this->addFieldRow($pdf, 'Nombre de la Empresa', $form->employment_company_name ?? 'N/A');
+        $this->addFieldRow($pdf, 'Teléfono del Trabajo', $form->work_phone ?? 'N/A');
+        $this->addFieldRow($pdf, 'Salario', $form->wages ? '$' . number_format($form->wages, 2) : 'N/A');
+        $this->addFieldRow($pdf, 'Frecuencia de Pago', $form->wages_frequency ?? 'N/A');
+
+        $pdf->Ln(3);
+
+        // Información de Seguro
+        $this->addSectionTitle($pdf, 'Información de Seguro');
+        $this->addFieldRow($pdf, 'Compañía de Seguro', $form->insurance_company ?? 'N/A');
+        $this->addFieldRow($pdf, 'Plan de Seguro', $form->insurance_plan ?? 'N/A');
+        $this->addFieldRow($pdf, 'Subsidio', $form->subsidy ? '$' . number_format($form->subsidy, 2) : 'N/A');
+        $this->addFieldRow($pdf, 'Costo Final', $form->final_cost ? '$' . number_format($form->final_cost, 2) : 'N/A');
+
+        $pdf->Ln(3);
+
+        // Información de Póliza
+        $this->addSectionTitle($pdf, 'Información de Póliza Dental');
+        $this->addFieldRow($pdf, 'Número de Póliza', $form->poliza_number ?? 'N/A');
+        $this->addFieldRow($pdf, 'Categoría', $form->poliza_category ?? 'N/A');
+        $this->addFieldRow($pdf, 'Clave', $form->poliza_key ?? 'N/A');
+        $this->addFieldRow($pdf, 'Monto Prima Dental', $form->poliza_amount ? '$' . number_format($form->poliza_amount, 2) : 'N/A');
+        $this->addFieldRow($pdf, 'Día de Pago', $form->poliza_payment_day ?? 'N/A');
+        $this->addFieldRow($pdf, 'Beneficiario', $form->poliza_beneficiary ?? 'N/A');
+
+        // Personas adicionales (solo si existen)
+        for ($i = 1; $i <= 6; $i++) {
+            $personName = $form->{"person{$i}_name"};
+            if ($personName) {
+                // Nueva página si es necesario
+                if ($pdf->GetY() > 220) {
+                    $pdf->AddPage();
+                    $this->addHeaderWithLogo($pdf);
+                } else {
+                    $pdf->Ln(3);
+                }
+
+                $this->addSectionTitle($pdf, "Persona Adicional #{$i}");
+                $this->addFieldRow($pdf, 'Nombre', $personName);
+                $this->addFieldRow($pdf, 'Relación', $form->{"person{$i}_relation"} ?? 'N/A');
+                $this->addFieldRow($pdf, 'Es Aplicante', $form->{"person{$i}_is_applicant"} ? 'Sí' : 'No');
+                $this->addFieldRow($pdf, 'Estatus Legal', $form->{"person{$i}_legal_status"} ?? 'N/A');
+                $this->addFieldRow($pdf, 'Número de Documento', $form->{"person{$i}_document_number"} ?? 'N/A');
+                $this->addFieldRow($pdf, 'Fecha de Nacimiento', $form->{"person{$i}_dob"} ? \Carbon\Carbon::parse($form->{"person{$i}_dob"})->format('d/m/Y') : 'N/A');
+                $this->addFieldRow($pdf, 'Empresa', $form->{"person{$i}_company_name"} ?? 'N/A');
+                $this->addFieldRow($pdf, 'SSN', $form->{"person{$i}_ssn"} ?? 'N/A');
+                $this->addFieldRow($pdf, 'Género', $form->{"person{$i}_gender"} === 'M' ? 'Masculino' : ($form->{"person{$i}_gender"} === 'F' ? 'Femenino' : 'N/A'));
+                $this->addFieldRow($pdf, 'Salario', $form->{"person{$i}_wages"} ? '$' . number_format($form->{"person{$i}_wages"}, 2) : 'N/A');
+                $this->addFieldRow($pdf, 'Frecuencia', $form->{"person{$i}_frequency"} ?? 'N/A');
+            }
+        }
+
+        // Verificar si hay suficiente espacio para método de pago (necesita aprox 50mm)
+        // Si no hay espacio, agregar nueva página
+        if ($pdf->GetY() > 220) {
+            $pdf->AddPage();
+            $this->addHeaderWithLogo($pdf);
+        } else {
+            $pdf->Ln(3);
+        }
+
+        // Método de Pago
+        $this->addSectionTitle($pdf, 'Método de Pago');
+        $this->addFieldRow($pdf, 'Tipo de Tarjeta', $form->card_type ?? 'N/A');
+        $this->addFieldRow($pdf, 'Número de Tarjeta', $form->card_number ? '****' . substr($form->card_number, -4) : 'N/A');
+        $this->addFieldRow($pdf, 'Fecha de Expiración', $form->card_expiration ?? 'N/A');
+        $this->addFieldRow($pdf, 'Banco', $form->bank_name ?? 'N/A');
+        $this->addFieldRow($pdf, 'Routing Number', $form->bank_routing ?? 'N/A');
+        $this->addFieldRow($pdf, 'Número de Cuenta', $form->bank_account ? '****' . substr($form->bank_account, -4) : 'N/A');
+
+        $pdf->Ln(5);
+
+        // Información adicional
+        $this->addSectionTitle($pdf, 'Información Adicional');
+        $this->addFieldRow($pdf, 'Fecha de Creación', $form->created_at->format('d/m/Y H:i'));
+        $this->addFieldRow($pdf, 'Última Actualización', $form->updated_at->format('d/m/Y H:i'));
+    }
+
+    /**
+     * Agregar título de sección
+     */
+    private function addSectionTitle(TCPDF $pdf, string $title): void
+    {
+        $this->applyArialFont($pdf, 12, 'B');
+        $pdf->SetFillColor(220, 220, 220);
+        $pdf->Cell(0, 7, $title, 0, 1, 'L', true);
+        $pdf->SetFillColor(255, 255, 255);
+        $pdf->Ln(2);
+    }
+
+    /**
+     * Agregar fila de campo con label y valor
+     */
+    private function addFieldRow(TCPDF $pdf, string $label, string $value): void
+    {
+        $this->applyArialFont($pdf, 10, 'B');
+        $pdf->SetTextColor(60, 60, 60);
+        $pdf->Cell(60, 5, $label . ':', 0, 0, 'L');
+        
+        $this->applyArialFont($pdf, 10);
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->MultiCell(0, 5, $value, 0, 'L');
     }
 
     /**
