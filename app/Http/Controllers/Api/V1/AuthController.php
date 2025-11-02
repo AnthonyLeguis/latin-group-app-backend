@@ -177,7 +177,7 @@ class AuthController extends Controller
     }
 
     /**
-     * Renovar el token de autenticación (extender sesión 8 horas más)
+     * Renovar el token de autenticación (extender sesión 1 hora más)
      */
     public function refreshToken(Request $request)
     {
@@ -194,7 +194,7 @@ class AuthController extends Controller
             // Eliminar el token actual
             $request->user()->currentAccessToken()->delete();
 
-            // Crear un nuevo token con 8 horas de vigencia
+            // Crear un nuevo token con 1 hora de vigencia
             $token = $user->createToken('API Token')->plainTextToken;
 
             \Log::info('Token renovado exitosamente:', [
@@ -205,7 +205,7 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'Sesión renovada exitosamente',
                 'token' => $token,
-                'expires_in' => 480 // minutos (8 horas)
+                'expires_in' => 60 // minutos (1 hora)
             ]);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
@@ -234,7 +234,7 @@ class AuthController extends Controller
 
             // Obtener la fecha de creación del token
             $createdAt = $currentToken->created_at;
-            $expirationMinutes = config('sanctum.expiration', 480); // 8 horas por defecto
+            $expirationMinutes = config('sanctum.expiration', 60); // 1 hora por defecto
             
             // Calcular la fecha de expiración
             $expiresAt = $createdAt->addMinutes($expirationMinutes);

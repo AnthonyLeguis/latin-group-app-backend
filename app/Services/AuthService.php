@@ -27,6 +27,11 @@ class AuthService
             throw new \Exception('Usuario no encontrado o no autorizado');
         }
 
+        // Verificar si el usuario está restringido/bloqueado
+        if ($user->is_restricted) {
+            throw new \Exception('Acceso restringido. Contacte al administrador.');
+        }
+
         // Verificar la contraseña
         if (!Hash::check($data->password, $user->password)) {
             throw new \Exception('Contraseña inválida');
@@ -81,6 +86,15 @@ class AuthService
                     'email' => $googleUser->getEmail()
                 ]);
                 throw new \Exception('Usuario no registrado en el sistema');
+            }
+
+            // Verificar si el usuario está restringido/bloqueado
+            if ($user->is_restricted) {
+                \Log::warning('🚫 Intento de acceso de usuario restringido:', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+                throw new \Exception('Acceso restringido. Contacte al administrador.');
             }
 
             \Log::info('✅ Usuario encontrado en la base de datos:', [

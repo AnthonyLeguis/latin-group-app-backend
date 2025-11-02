@@ -432,6 +432,58 @@ class UserController extends Controller
     }
 
     /**
+     * Toggle restricción de acceso de un usuario (solo admin)
+     */
+    public function toggleRestriction(Request $request, User $user): JsonResponse
+    {
+        // Solo admin puede restringir usuarios
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // No se puede restringir a sí mismo
+        if ($user->id === $request->user()->id) {
+            return response()->json(['error' => 'No puedes restringir tu propio acceso'], 400);
+        }
+
+        try {
+            $newStatus = !$user->is_restricted;
+            
+            $user->update([
+                'is_restricted' => $newStatus
+            ]);
+
+            // Si se está restringiendo, revocar todos los tokens activos
+            if ($newStatus) {
+                $user->tokens()->delete();
+                
+                \Log::info('🚫 Usuario restringido y tokens revocados:', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'restricted_by' => $request->user()->email
+                ]);
+            } else {
+                \Log::info('✅ Usuario desbloqueado:', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'unblocked_by' => $request->user()->email
+                ]);
+            }
+
+            return response()->json([
+                'message' => $newStatus ? 'Usuario restringido exitosamente' : 'Usuario desbloqueado exitosamente',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'is_restricted' => $newStatus
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
      * Resetear tiempo activo de un agente (solo admin)
      */
     public function resetActiveTime(Request $request, User $user): JsonResponse

@@ -16,6 +16,7 @@ class User extends Authenticatable
         'email',
         'password',
         'type', // admin, agent, client
+        'is_restricted', // Usuario restringido/bloqueado
         'google_id',
         'avatar',
         'created_by',
@@ -40,6 +41,7 @@ class User extends Authenticatable
         'current_session_start' => 'datetime',
         'total_active_time' => 'integer',
         'last_session_duration' => 'integer',
+        'is_restricted' => 'boolean',
     ];
 
     // Métodos para verificar tipo de usuario

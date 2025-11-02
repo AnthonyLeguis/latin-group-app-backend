@@ -42,11 +42,11 @@ return [
     | considered expired. If this value is null, personal access tokens do
     | not expire. This won't tweak the lifetime of first-party sessions.
     |
-    | Configurado a 480 minutos (8 horas) para seguridad de la aplicación.
+    | Configurado a 60 minutos (1 hora) para control de tiempo activo de agentes.
     |
     */
 
-    'expiration' => 480, // 8 horas
+    'expiration' => 60, // 1 hora
 
     /*
     |--------------------------------------------------------------------------
