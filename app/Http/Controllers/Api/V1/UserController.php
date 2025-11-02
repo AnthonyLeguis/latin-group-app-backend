@@ -132,7 +132,7 @@ class UserController extends Controller
         $totalAgents = User::where('type', 'agent')->count();
 
         $agents = User::where('type', 'agent')
-            ->select('id', 'name', 'email', 'avatar', 'last_activity', 'created_at')
+            ->select('id', 'name', 'email', 'avatar', 'last_activity', 'created_at', 'total_active_time', 'current_session_start')
             ->orderByRaw('last_activity IS NULL, last_activity DESC')
             ->get()
             ->map(function ($agent) use ($onlineThreshold) {
@@ -148,6 +148,7 @@ class UserController extends Controller
                     'minutes_ago' => $agent->last_activity 
                         ? now()->diffInMinutes($agent->last_activity)
                         : null,
+                    'total_active_time' => $agent->total_active_time ?? 0, // Minutos totales acumulados
                 ];
             });
 
@@ -383,6 +384,46 @@ class UserController extends Controller
         try {
             $user->delete();
             return response()->json(['message' => 'Usuario eliminado exitosamente']);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    /**
+     * Resetear tiempo activo de un agente (solo admin)
+     */
+    public function resetActiveTime(Request $request, User $user): JsonResponse
+    {
+        // Solo admin puede resetear
+        if (!$request->user()->isAdmin()) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // Solo se puede resetear tiempo de agentes
+        if ($user->type !== 'agent') {
+            return response()->json(['error' => 'Solo se puede resetear el tiempo de agentes'], 400);
+        }
+
+        try {
+            $user->update([
+                'total_active_time' => 0,
+                'last_session_duration' => null
+            ]);
+
+            \Log::info('⏱️ Tiempo activo reseteado:', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'reset_by' => $request->user()->email
+            ]);
+
+            return response()->json([
+                'message' => 'Tiempo activo reseteado exitosamente',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'total_active_time' => 0
+                ]
+            ]);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 400);
         }

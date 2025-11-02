@@ -23,6 +23,9 @@ class User extends Authenticatable
         'updated_by',
         'agent_id', // Agente asignado al cliente
         'last_activity', // Última actividad del usuario
+        'total_active_time', // Total de minutos acumulados activo
+        'current_session_start', // Inicio de la sesión actual
+        'last_session_duration', // Duración de la última sesión en minutos
     ];
 
     protected $hidden = [
@@ -34,6 +37,9 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
         'last_activity' => 'datetime',
+        'current_session_start' => 'datetime',
+        'total_active_time' => 'integer',
+        'last_session_duration' => 'integer',
     ];
 
     // Métodos para verificar tipo de usuario

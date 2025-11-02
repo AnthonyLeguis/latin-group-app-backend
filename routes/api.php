@@ -47,6 +47,7 @@ Route::middleware(['auth:sanctum', 'update.last.activity'])->prefix('v1')->group
     Route::get('users/online-agents', [UserController::class, 'onlineAgents']); // Agentes conectados (solo admin)
     Route::get('users/agents-report', [UserController::class, 'agentsReport']); // Reporte de agentes con clients
     Route::get('users/pending-forms', [UserController::class, 'pendingForms']); // Planillas pendientes (solo admin)
+    Route::post('users/{user}/reset-active-time', [UserController::class, 'resetActiveTime']); // Resetear tiempo activo (solo admin)
     Route::apiResource('users', UserController::class)->except(['edit', 'create']);
 
     // Gestión de planillas de aplicación

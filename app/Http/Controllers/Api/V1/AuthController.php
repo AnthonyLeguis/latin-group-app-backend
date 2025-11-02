@@ -26,8 +26,14 @@ class AuthController extends Controller
         try {
             $result = $this->authService->login($data);
             
-            // Disparar evento de actividad si es un agente
+            // Iniciar sesión y disparar evento si es un agente
             if (isset($result['user']) && $result['user']['type'] === 'agent') {
+                // Marcar el inicio de la sesión actual
+                $user = User::find($result['user']['id']);
+                $user->update([
+                    'current_session_start' => now()
+                ]);
+                
                 $this->broadcastAgentActivity();
             }
             
@@ -281,19 +287,37 @@ class AuthController extends Controller
 
             $user = $request->user();
 
-            // Marcar como desconectado estableciendo last_activity en el pasado
-            $user->update([
-                'last_activity' => now()->subMinutes(10) // 10 minutos en el pasado
-            ]);
-
-            // Disparar evento de actividad si es un agente ANTES de eliminar el token
-            if ($user->type === 'agent') {
+            // Si es un agente, calcular y acumular el tiempo activo
+            if ($user->type === 'agent' && $user->current_session_start) {
+                $sessionStart = $user->current_session_start;
+                $sessionEnd = now();
+                
+                // Calcular duración de la sesión en minutos
+                $sessionDuration = $sessionStart->diffInMinutes($sessionEnd);
+                
+                // Acumular al tiempo total
+                $totalActiveTime = ($user->total_active_time ?? 0) + $sessionDuration;
+                
+                $user->update([
+                    'last_activity' => now()->subMinutes(10), // Marcar como desconectado
+                    'total_active_time' => $totalActiveTime,
+                    'last_session_duration' => $sessionDuration,
+                    'current_session_start' => null // Limpiar el inicio de sesión
+                ]);
+                
                 \Log::info('🔔 Disparando evento de logout para agente:', [
                     'user_id' => $user->id,
                     'email' => $user->email,
-                    'last_activity' => $user->last_activity
+                    'session_duration' => $sessionDuration,
+                    'total_active_time' => $totalActiveTime
                 ]);
+                
                 $this->broadcastAgentActivity();
+            } else {
+                // Marcar como desconectado estableciendo last_activity en el pasado
+                $user->update([
+                    'last_activity' => now()->subMinutes(10)
+                ]);
             }
 
             // Eliminar el token actual (después del broadcast)
