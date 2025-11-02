@@ -25,6 +25,7 @@ class ApplicationDocument extends Model
 
     protected $appends = [
         'file_url',
+        'download_url',
         'file_size_formatted',
         'is_image',
         'is_pdf',
@@ -46,7 +47,20 @@ class ApplicationDocument extends Model
     // Accessors (computed properties)
     public function getFileUrlAttribute(): string
     {
-        return asset('storage/' . $this->file_path);
+        $assetBase = config('app.asset_url');
+        $relativePath = 'storage/' . ltrim($this->file_path, '/');
+
+        if (!empty($assetBase)) {
+            return rtrim($assetBase, '/') . '/' . $relativePath;
+        }
+
+        return url($relativePath);
+    }
+
+    public function getDownloadUrlAttribute(): string
+    {
+        // URL protegida para descargas con autenticación
+        return url("/api/v1/application-forms/{$this->application_form_id}/documents/{$this->id}/download");
     }
 
     public function getFileSizeFormattedAttribute(): string
