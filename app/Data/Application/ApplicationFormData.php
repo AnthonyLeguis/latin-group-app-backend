@@ -17,7 +17,7 @@ class ApplicationFormData extends Data
         public string $zip_code,
         public string $phone,
         public ?string $phone2,
-        public string $email,
+        public ?string $email, // Email ahora opcional para clients
         public string $gender, // M/F
         public ?string $ssn, // Ahora opcional
         public string $legal_status,
