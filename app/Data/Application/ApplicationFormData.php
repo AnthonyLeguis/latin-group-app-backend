@@ -150,7 +150,7 @@ class ApplicationFormData extends Data
             'zip_code' => 'required|string|max:20',
             'phone' => 'required|string|max:20',
             'phone2' => 'nullable|string|max:20',
-            'email' => 'required|email|max:255',
+            'email' => 'nullable|email|max:255', // Email ahora opcional para clients
             'gender' => 'required|in:M,F',
             'ssn' => 'nullable|string|max:20', // Cambiado a nullable
             'legal_status' => 'required|string|max:100',
