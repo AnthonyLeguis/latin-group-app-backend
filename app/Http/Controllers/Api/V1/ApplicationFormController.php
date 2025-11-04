@@ -285,10 +285,14 @@ class ApplicationFormController extends Controller
             });
             
             $form->update($formData);
-            
+
+            if (!empty($formData)) {
+                $this->regenerateApplicationFormPdf($form, $user);
+            }
+
             return response()->json([
                 'message' => 'Planilla actualizada exitosamente',
-                'form' => $form->fresh(['client', 'agent'])
+                'form' => $form->fresh(['client', 'agent', 'documents'])
             ]);
 
         } catch (\Exception $e) {
@@ -415,6 +419,10 @@ class ApplicationFormController extends Controller
             if (!empty($clientChanges) && $form->client) {
                 $form->client->update($clientChanges);
             }
+
+            if (!empty($formChanges) || !empty($clientChanges)) {
+                $this->regenerateApplicationFormPdf($form, $user);
+            }
             
             // Limpiar los cambios pendientes
             $form->update([
@@ -444,7 +452,7 @@ class ApplicationFormController extends Controller
 
             return response()->json([
                 'message' => 'Cambios aprobados y aplicados exitosamente',
-                'form' => $form->fresh(['client', 'agent', 'reviewedBy'])
+                'form' => $form->fresh(['client', 'agent', 'reviewedBy', 'documents'])
             ]);
 
         } catch (\Exception $e) {
@@ -518,6 +526,74 @@ class ApplicationFormController extends Controller
             return response()->json([
                 'error' => 'Error al rechazar los cambios: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    private function regenerateApplicationFormPdf(ApplicationForm $form, User $user): void
+    {
+        try {
+            $form->refresh();
+            $form->load(['client', 'agent', 'documents']);
+
+            if (!$form->client) {
+                throw new \RuntimeException('El formulario no tiene un cliente asociado.');
+            }
+
+            $pdfService = new PdfGeneratorService();
+            $relativePath = $pdfService->generateApplicationPdf($form);
+
+            $tempFullPath = storage_path('app/' . $relativePath);
+            if (!file_exists($tempFullPath)) {
+                throw new \RuntimeException('No se encontró el PDF temporal generado.');
+            }
+
+            $pdfFileName = 'Planilla_Aplicacion_' . $form->client->name . '_' . $form->id . '.pdf';
+            $publicPdfPath = 'application_documents/' . $pdfFileName;
+
+            $publicDisk = Storage::disk('public');
+            if (!$publicDisk->exists('application_documents')) {
+                $publicDisk->makeDirectory('application_documents');
+            }
+
+            $fileContents = file_get_contents($tempFullPath);
+            if ($fileContents === false) {
+                throw new \RuntimeException('No se pudo leer el PDF generado.');
+            }
+
+            $publicDisk->put($publicPdfPath, $fileContents);
+            $fileSize = $publicDisk->size($publicPdfPath) ?? 0;
+
+            $documentData = [
+                'uploaded_by' => $user->id,
+                'original_name' => $pdfFileName,
+                'file_name' => $pdfFileName,
+                'file_path' => $publicPdfPath,
+                'mime_type' => 'application/pdf',
+                'file_size' => $fileSize,
+                'document_type' => 'application_form'
+            ];
+
+            $existingDocument = $form->documents()
+                ->where('document_type', 'application_form')
+                ->first();
+
+            if ($existingDocument) {
+                if ($existingDocument->file_path !== $publicPdfPath && $publicDisk->exists($existingDocument->file_path)) {
+                    $publicDisk->delete($existingDocument->file_path);
+                }
+
+                $existingDocument->update($documentData);
+            } else {
+                $form->documents()->create($documentData);
+            }
+
+            @unlink($tempFullPath);
+        } catch (\Throwable $e) {
+            \Log::error('Error al regenerar PDF de aplicación', [
+                'form_id' => $form->id ?? null,
+                'user_id' => $user->id ?? null,
+                'message' => $e->getMessage()
+            ]);
         }
     }
 
