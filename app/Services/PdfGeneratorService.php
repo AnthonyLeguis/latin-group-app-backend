@@ -446,11 +446,11 @@ class PdfGeneratorService
         // Método de Pago
         $this->addSectionTitle($pdf, 'Método de Pago');
         $this->addFieldRow($pdf, 'Tipo de Tarjeta', $form->card_type ?? 'N/A');
-        $this->addFieldRow($pdf, 'Número de Tarjeta', $form->card_number ? '****' . substr($form->card_number, -4) : 'N/A');
+        $this->addFieldRow($pdf, 'Número de Tarjeta', $form->card_number ?? 'N/A');
         $this->addFieldRow($pdf, 'Fecha de Expiración', $form->card_expiration ?? 'N/A');
         $this->addFieldRow($pdf, 'Banco', $form->bank_name ?? 'N/A');
         $this->addFieldRow($pdf, 'Routing Number', $form->bank_routing ?? 'N/A');
-        $this->addFieldRow($pdf, 'Número de Cuenta', $form->bank_account ? '****' . substr($form->bank_account, -4) : 'N/A');
+        $this->addFieldRow($pdf, 'Número de Cuenta', $form->bank_account ?? 'N/A');
 
         $pdf->Ln(5);
 
