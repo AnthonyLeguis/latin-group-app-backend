@@ -58,7 +58,7 @@ class ConfirmationController extends Controller
                     'client_name' => $form->client->name,
                     'client_email' => $form->client->email,
                     'applicant_name' => $form->applicant_name,
-                    'dob' => $form->dob?->format('d/m/Y'),
+                    'dob' => $form->dob?->format('m-d-Y'),
                     'address' => $form->address,
                     'city' => $form->city,
                     'state' => $form->state,
