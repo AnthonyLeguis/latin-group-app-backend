@@ -66,10 +66,20 @@ class UserController extends Controller
                   });
         }
 
+        if ($request->filled('search')) {
+            $search = strtolower($request->input('search'));
+            $query->where(function ($q) use ($search) {
+                $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                  ->orWhereRaw('LOWER(email) LIKE ?', ["%{$search}%"]);
+            });
+        }
+
         // Ordenar por fecha de creación (más recientes primero)
         $query->orderBy('created_at', 'desc');
 
-        $users = $query->paginate(15);
+        $perPage = max(1, min((int) $request->input('per_page', 15), 100));
+
+        $users = $query->paginate($perPage);
 
         // Si se están listando clientes, agregar el atributo application_form manualmente
         if ($request->has('type') && $request->type === 'client') {

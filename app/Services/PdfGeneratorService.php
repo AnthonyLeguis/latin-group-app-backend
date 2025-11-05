@@ -174,7 +174,7 @@ class PdfGeneratorService
         $pdf->Cell(0, 5, 'Fecha de registro', 0, 1, 'R');
         $pdf->SetXY(140, 23);
         $this->applyArialFont($pdf, 12, 'B');
-        $pdf->Cell(0, 5, now()->format('d/m/Y'), 0, 1, 'R');
+        $pdf->Cell(0, 5, now()->format('m/d/Y'), 0, 1, 'R');
 
         // Línea divisoria roja
         $pdf->SetY(45);
@@ -249,7 +249,7 @@ class PdfGeneratorService
         
         $clientData = [
             'Nombre y apellido:' => $form->client->name,
-            'Fecha de Nacimiento:' => $form->dob?->format('d/m/Y'),
+            'Fecha de Nacimiento:' => $form->dob?->format('m/d/Y'),
             'Correo Electrónico:' => $form->email,
             'Número de Teléfono:' => $form->phone,
             'Salario Mensual:' => $form->wages ?? 'N/A',
@@ -307,12 +307,8 @@ class PdfGeneratorService
     $this->applyArialFont($pdf, 12);
         
         // Párrafo inicial
-        $now = now();
-        $monthText = $this->getMonthName($now->month);
-        $dayText = "del mes 10 al 30 del año " . $now->year;
-        
         $pdf->MultiCell(0, 5, 
-            "En {$dayText}\nNombre: {$form->client->name}\nDirección: {$form->state}",
+            "Nombre: {$form->client->name}\nDirección: {$form->state}",
             0, 'L'
         );
 
@@ -328,12 +324,14 @@ class PdfGeneratorService
         $this->applyArialFont($pdf, 12);
         $pdf->MultiCell(0, 5,
             "A quien pueda interesar:\n\n" .
-            "Yo, {$form->client->name}, fecha de nacimiento: {$form->dob?->format('d/m/Y')}\n" .
-            "Con numero de social security: 111\n\n" .
+            "Yo, {$form->client->name}, fecha de nacimiento: {$form->dob?->format('m/d/Y')}\n" .
+            "Con numero de social security: {$form->ssn}\n\n" .
             "Hago constar por medio de la presente que trabajo por cuenta propia y me comprometo y es mi voluntad, declarar alrededor de " . number_format($monthlySalary, 2) . " al mes y " . number_format($annualSalary, 2) . " ingresos anuales para el 2026.",
             0, 'L'
         );
 
+        // Footer centrado en la parte inferior de la página
+        $this->addPageFooter($pdf, $form->client->name);
     }
 
     /**
@@ -357,7 +355,7 @@ class PdfGeneratorService
         // Datos del Aplicante
         $this->addSectionTitle($pdf, 'Datos del Aplicante');
         $this->addFieldRow($pdf, 'Nombre Completo', $form->applicant_name ?? 'N/A');
-        $this->addFieldRow($pdf, 'Fecha de Nacimiento', $form->dob?->format('d/m/Y') ?? 'N/A');
+        $this->addFieldRow($pdf, 'Fecha de Nacimiento', $form->dob?->format('m/d/Y') ?? 'N/A');
         $this->addFieldRow($pdf, 'Género', $form->gender === 'M' ? 'Masculino' : ($form->gender === 'F' ? 'Femenino' : 'N/A'));
         $this->addFieldRow($pdf, 'Estatus Legal', $form->legal_status ?? 'N/A');
         $this->addFieldRow($pdf, 'Número de Documento', $form->document_number ?? 'N/A');
@@ -425,7 +423,7 @@ class PdfGeneratorService
                 $this->addFieldRow($pdf, 'Es Aplicante', $form->{"person{$i}_is_applicant"} ? 'Sí' : 'No');
                 $this->addFieldRow($pdf, 'Estatus Legal', $form->{"person{$i}_legal_status"} ?? 'N/A');
                 $this->addFieldRow($pdf, 'Número de Documento', $form->{"person{$i}_document_number"} ?? 'N/A');
-                $this->addFieldRow($pdf, 'Fecha de Nacimiento', $form->{"person{$i}_dob"} ? \Carbon\Carbon::parse($form->{"person{$i}_dob"})->format('d/m/Y') : 'N/A');
+                $this->addFieldRow($pdf, 'Fecha de Nacimiento', $form->{"person{$i}_dob"} ? \Carbon\Carbon::parse($form->{"person{$i}_dob"})->format('m/d/Y') : 'N/A');
                 $this->addFieldRow($pdf, 'Empresa', $form->{"person{$i}_company_name"} ?? 'N/A');
                 $this->addFieldRow($pdf, 'SSN', $form->{"person{$i}_ssn"} ?? 'N/A');
                 $this->addFieldRow($pdf, 'Género', $form->{"person{$i}_gender"} === 'M' ? 'Masculino' : ($form->{"person{$i}_gender"} === 'F' ? 'Femenino' : 'N/A'));
@@ -456,8 +454,8 @@ class PdfGeneratorService
 
         // Información adicional
         $this->addSectionTitle($pdf, 'Información Adicional');
-        $this->addFieldRow($pdf, 'Fecha de Creación', $form->created_at->format('d/m/Y H:i'));
-        $this->addFieldRow($pdf, 'Última Actualización', $form->updated_at->format('d/m/Y H:i'));
+        $this->addFieldRow($pdf, 'Fecha de Creación', $form->created_at->format('m/d/Y H:i'));
+        $this->addFieldRow($pdf, 'Última Actualización', $form->updated_at->format('m/d/Y H:i'));
     }
 
     /**

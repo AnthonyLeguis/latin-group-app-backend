@@ -51,8 +51,27 @@ class ApplicationFormController extends Controller
             $query->where('client_id', $request->client_id);
         }
 
+        if ($request->filled('search')) {
+            $search = strtolower($request->input('search'));
+            $query->where(function ($q) use ($search) {
+                $q->whereRaw('LOWER(applicant_name) LIKE ?', ["%{$search}%"])
+                  ->orWhereHas('client', function ($clientQuery) use ($search) {
+                      $clientQuery->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                                  ->orWhereRaw('LOWER(email) LIKE ?', ["%{$search}%"]);
+                  })
+                  ->orWhereHas('agent', function ($agentQuery) use ($search) {
+                      $agentQuery->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                                 ->orWhereRaw('LOWER(email) LIKE ?', ["%{$search}%"]);
+                  });
+
+                if (is_numeric($search)) {
+                    $q->orWhere('id', (int) $search);
+                }
+            });
+        }
+
         // Obtener parámetros de paginación (por defecto 15 items por página)
-        $perPage = $request->input('per_page', 15);
+        $perPage = max(1, min((int) $request->input('per_page', 15), 100));
         $forms = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json($forms);
