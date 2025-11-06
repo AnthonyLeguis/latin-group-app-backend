@@ -71,6 +71,7 @@ class ConfirmationController extends Controller
                     // Datos del plan
                     'insurance_company' => $form->insurance_company,
                     'insurance_plan' => $form->insurance_plan,
+                    'wages' => $form->wages,
                     'final_cost' => $form->final_cost,
                     // Información del token
                     'token_expires_at' => $form->token_expires_at,
