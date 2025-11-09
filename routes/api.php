@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\ApplicationFormController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ConfirmationController;
+use App\Http\Controllers\Api\V1\PublicApplicationController;
 use App\Http\Controllers\Api\V1\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -11,6 +12,22 @@ use Illuminate\Support\Facades\Route;
 // Ruta pública para formulario de contacto
 Route::post('v1/contact', [\App\Http\Controllers\Api\V1\ContactController::class, 'submit'])
     ->middleware('throttle:5,1');
+
+// Ruta pública para obtener lista de agentes (sin autenticación)
+Route::get('v1/public/agents', [UserController::class, 'publicAgentsList'])
+    ->middleware('throttle:30,1');
+
+// Ruta pública para obtener lista de clientes (sin autenticación)
+Route::get('v1/public/clients', [UserController::class, 'publicClientsList'])
+    ->middleware('throttle:30,1');
+
+// Ruta pública para crear nuevo cliente (sin autenticación)
+Route::post('v1/public/clients', [UserController::class, 'publicCreateClient'])
+    ->middleware('throttle:10,1');
+
+// Ruta pública para crear nueva application (sin autenticación)
+Route::post('v1/public/new-application', [PublicApplicationController::class, 'store'])
+    ->middleware('throttle:10,1'); // Limitar a 10 requests por minuto
 
 // Rutas públicas para confirmación de planillas (sin autenticación)
 Route::prefix('v1/confirm')->group(function () {

@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Mail\ApplicationConfirmedNotification;
 use App\Models\ApplicationForm;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Mail;
 
 class ConfirmationController extends Controller
 {
@@ -128,6 +130,32 @@ class ConfirmationController extends Controller
 
         // ✅ CONFIRMAR LA PLANILLA
         $form->confirmByClient();
+        $form->refresh()->load(['agent', 'client']);
+
+        // Enviar notificación con la autorización firmada
+        try {
+            $agent = $form->agent;
+            $pdfPath = $form->pdf_path ? storage_path('app/' . $form->pdf_path) : null;
+
+            if ($agent && $agent->email && $pdfPath && file_exists($pdfPath)) {
+                Mail::to($agent->email)->send(new ApplicationConfirmedNotification($form, $agent, $pdfPath));
+                \Log::info("✅ Notificación de planilla confirmada enviada a {$agent->email}", [
+                    'form_id' => $form->id,
+                    'agent_id' => $agent->id,
+                ]);
+            } else {
+                \Log::warning('⚠️ No se pudo enviar la notificación de planilla confirmada', [
+                    'form_id' => $form->id,
+                    'agent_email' => $agent->email ?? null,
+                    'pdf_found' => $pdfPath && file_exists($pdfPath),
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Log::error('❌ Error al enviar notificación de planilla confirmada', [
+                'form_id' => $form->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return response()->json([
             'success' => true,

@@ -532,4 +532,92 @@ class UserController extends Controller
             return response()->json(['error' => $e->getMessage()], 400);
         }
     }
+
+    /**
+     * Obtener lista de agentes (endpoint público).
+     * GET /api/v1/public/agents
+     * Sin autenticación - para el formulario público
+     */
+    public function publicAgentsList()
+    {
+        try {
+            $agents = User::where('type', 'agent')
+                         ->select('id', 'name', 'email')
+                         ->orderBy('name', 'asc')
+                         ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $agents
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error obteniendo lista pública de agentes: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Error al obtener lista de agentes'
+            ], 500);
+        }
+    }
+
+    /**
+     * Lista pública de clientes (sin autenticación)
+     * Sin autenticación - para el formulario público
+     */
+    public function publicClientsList()
+    {
+        try {
+            $clients = User::where('type', 'client')
+                          ->whereDoesntHave('applicationFormsAsClient')
+                          ->select('id', 'name', 'email', 'agent_id')
+                          ->orderBy('name', 'asc')
+                          ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $clients
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error obteniendo lista pública de clientes: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Error al obtener lista de clientes'
+            ], 500);
+        }
+    }
+
+    /**
+     * Crear cliente público (sin autenticación)
+     * Sin autenticación - para el formulario público
+     */
+    public function publicCreateClient(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'email' => 'nullable|email|unique:users,email',
+                'password' => 'required|string|min:6',
+                'agent_id' => 'required|exists:users,id'
+            ]);
+
+            $validated['type'] = 'client';
+            $validated['password'] = bcrypt($validated['password']);
+
+            // Crear el usuario cliente
+            $client = User::create($validated);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cliente creado exitosamente',
+                'user' => $client
+            ], 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Error de validación',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Error creando cliente público: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Error al crear cliente'
+            ], 500);
+        }
+    }
 }
